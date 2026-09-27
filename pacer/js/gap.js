@@ -62,10 +62,11 @@ export function spokenGap(sec) {
 // Voice "only when off pace". Warnings start `band` seconds from the ghost (5 or 10,
 // Settings), either way, then come at each step of a ladder as the gap gets worse and as it
 // gets better: 5, 10, 15, 20, 25, 30, 45 seconds, 1 minute, 90 seconds, 2, 3, 4 and 5
-// minutes, and nothing past 5 minutes; coming back, at the step below the last warning (30
-// after 45, then 25, 20…). The same ahead. "On pace" the moment you meet the ghost again,
-// only right after a warning: a small drift that never reached the band, and back, says
-// nothing.
+// minutes, and nothing past 5 minutes; coming back, at each step below the last warning
+// (30 after 45, then 25, 20…, 5). The same ahead. So 5, 10, 15, 10, 15, 10, 5 seconds
+// behind are all said, then "on pace" the moment you meet the ghost again, only right after
+// a warning: inside the first step on either side (the on-pace zone) nothing else is said,
+// and a small drift that never reached it, and back, says nothing.
 // state = {level, inside}: level = the step last warned about (+10 = 10 s behind, -5 = 5 s
 // ahead), 0 once "on pace" was said or before any warning; inside = the gap came back well
 // inside since (3 s inside the band), so the same step can be warned about again.
@@ -100,6 +101,13 @@ export function offPaceCue(state, shown, cfg = OFF_PACE) {
     return { gap: shown };
   }
   if (a < band) {
+    // back inside from further out, past the first step without its call (the gap jumped,
+    // after a tunnel or a pause): say where you are now, once; "on pace" at the ghost
+    if (Math.abs(C) > band) {
+      state.level = Math.sign(C) * band;
+      state.inside = a < rearm;
+      return { gap: shown };
+    }
     if (C !== 0 && a < rearm) state.inside = true;
     return null;
   }

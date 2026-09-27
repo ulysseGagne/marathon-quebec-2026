@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS = {
   raceGels: true,                  // take the race's gels (km 15.1 and 27): "Gel in 200 meters"
   theme: 'mono',                   // colour theme (js/theme.js)
   pocket: false,                   // black screen during the run, voice only
+  directions: true,                // "Turn right in 50 meters" before each turn
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun
   practicePace: 255,               // s/km for practice runs
   practiceRoute: 'home-dkn',       // 'home-dkn' (Sommet 3V → DKN) or 'dkn-home', one way

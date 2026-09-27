@@ -151,6 +151,44 @@ test('voice when off pace, from 10 s: each step both ways, "on pace" at the ghos
   assert.deepEqual(said, [31, -30]);
 });
 
+// The gap as the screen shows it goes through every whole second between two points.
+function walkGaps(points, cfg) {
+  const st = { level: 0 };
+  const said = [];
+  let prev = 0;
+  for (const p of points) {
+    const step = p > prev ? 1 : -1;
+    for (let g = prev; g !== p;) {
+      g += step;
+      const c = offPaceCue(st, g, cfg);
+      if (c) said.push(c.pace ? 'on pace' : `${Math.abs(c.gap)} ${c.gap > 0 ? 'behind' : 'ahead'}`);
+    }
+    prev = p;
+  }
+  return said;
+}
+
+test('voice when off pace: every step getting worse and getting better, "on pace" once at the ghost', () => {
+  // + = behind, − = ahead. The runner's own examples, word for word:
+  // 5 ahead, 10 ahead, slowing back to 5: "5 seconds ahead" again
+  assert.deepEqual(walkGaps([-5, -10, -5]), ['5 ahead', '10 ahead', '5 ahead']);
+  // 5, 10, 15 behind, back to 10, to 15 again, 10, 5, 0: all said, then "on pace";
+  // then 2 ahead and back to 0: nothing (inside the on-pace zone, no repeated "on pace")
+  assert.deepEqual(walkGaps([5, 10, 15, 10, 15, 10, 5, 0, -2, 0]),
+    ['5 behind', '10 behind', '15 behind', '10 behind', '15 behind', '10 behind', '5 behind', 'on pace']);
+  // 15 ahead, 20, back to 15, 10, and 15 again: every one
+  assert.deepEqual(walkGaps([-15, -20, -15, -10, -15]),
+    ['5 ahead', '10 ahead', '15 ahead', '20 ahead', '15 ahead', '10 ahead', '15 ahead']);
+  // a wobble on either side of a step says it once
+  assert.deepEqual(walkGaps([10, 9, 10, 9, 11, 9, 10]), ['5 behind', '10 behind']);
+  // the gap jumping back inside the zone (after a tunnel or a pause) past the 5 s step:
+  // that improvement is said too, then "on pace" at the ghost
+  const st = { level: 0 };
+  const said = [];
+  for (const g of [5, 10, 3, 2, 0, -2, 0]) { const c = offPaceCue(st, g); if (c) said.push(c.pace ? 'pace' : c.gap); }
+  assert.deepEqual(said, [5, 10, 3, 'pace']);
+});
+
 test('voice when off pace: the ladder 5 … 30, 45, 1 min, 90 s, 2 … 5 min, both ways, nothing past 5 min', () => {
   for (const sign of [1, -1]) {
     const st = { level: 0 };

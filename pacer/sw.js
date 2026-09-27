@@ -1,7 +1,7 @@
 // Service worker: everything the pacer needs is cached on first visit, so it works with
 // no connection at all. A new version takes over as soon as it is fully downloaded; the
 // page reloads onto it by itself unless a run is going (then on the next launch).
-const VERSION = 'b21d81e965b9';
+const VERSION = '362800627a97';
 const CACHE = `pacer-${VERSION}`;
 const ASSETS = [
   "./",
@@ -21,6 +21,7 @@ const ASSETS = [
   "js/store.js",
   "js/theme.js",
   "js/tracker.js",
+  "js/turns.js",
   "js/voice.js",
   "js/wake.js",
   "js/weather.js",

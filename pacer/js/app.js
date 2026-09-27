@@ -16,6 +16,7 @@ import { angleDiff, haversine, bearingDeg } from './geo.js';
 import { helpHtml } from './help.js';
 import { fetchRaceWind } from './weather.js';
 import { THEMES, THEME_ORDER, THEME_NOTES, applyTheme, themeName } from './theme.js';
+import { findTurns, turnShort, TurnCaller } from './turns.js';
 
 const VERSION = '2026.09.28';
 const $ = (s) => document.querySelector(s);
@@ -125,6 +126,11 @@ function useCourse(course, plan, { keepTracker = false } = {}) {
   const same = keepTracker && S.course === course && S.tracker;
   S.course = course;
   S.plan = plan;
+  // the turns to announce: the marathon's real turns (60° or more: the course is closed),
+  // every corner on a practice route (city streets), from the start line on
+  const mar = course && course.id === 'marathon';
+  S.turns = course ? findTurns(course.line, { from: mar ? 0 : course.line.d0 + 5, min: mar ? 60 : 35 }) : [];
+  if (mar) S.marathonTurns = S.turns.length;
   if (!same) {
     S.tracker = course ? new Tracker(course, { hint: trackerHint, plan: () => S.plan }) : null;
     if (S.fix && S.tracker && Date.now() - S.fixReal < 10000) S.tracker.update({ ...S.fix, t: clock.now() });
@@ -160,12 +166,12 @@ function setupRunObjects() {
   S.gap.reset();
   S.lastVoiceK = null;
   S.alert = { level: 0 };
-  S.alertAt = 0;
   S.lastBar = null;
   S.lastWater = null;
   S.countdownAt = null;
   S.offSaid = null;
   S.rawTrail = [];
+  S.turnCaller = null;
   S.resume = null;
   S.peekUntil = 0;
   S.lastTrailN = 0;
@@ -377,7 +383,7 @@ function helpEnv() {
   try { standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { /* ignore */ }
   return {
     status, acc: fresh ? S.fix.acc : null, ios, android: /Android/.test(ua), standalone,
-    chrome: /CriOS/.test(ua), firefox: /FxiOS/.test(ua),
+    chrome: /CriOS/.test(ua), firefox: /FxiOS/.test(ua), turns: S.marathonTurns,
   };
 }
 
@@ -650,6 +656,8 @@ function runningFrame(now, dt) {
   // what to say this frame: a bar, the next aid station, the gap every N metres
   const words = [];
   if (el >= 0 && !r.finish) offCourseWords(now, words);
+  const turn = turnDue(d, el);
+  if (turn) words.push(turn.text);
   const bar = barDue(d, el);
   if (bar) words.push(bar.caf ? 'Take caffeinated bar.' : 'Take regular bar.');
   const aid = waterDue(d, el);
@@ -667,16 +675,13 @@ function runningFrame(now, dt) {
       }
     }
   }
-  // or only when off pace: from 10 s, every 5 s step out and back in, then "on pace" at the
-  // ghost
+  // or only when off pace: each step of the ladder as it is reached, getting worse and
+  // getting better, as it happens (no waiting between calls: the ladder itself keeps a
+  // wobble around a step from repeating), then "on pace" at the ghost
   const g = S.gap.state();
-  if (voiceMode() === 'offpace' && d !== null && el > 30 && !waiting && !r.finish && !S.resume && g.shown !== null &&
-      now - (S.alertAt || 0) > 20000) {
+  if (voiceMode() === 'offpace' && d !== null && el > 30 && !waiting && !r.finish && !S.resume && g.shown !== null) {
     const cue = offPaceCue(S.alert, g.shown, offPace());
-    if (cue) {
-      S.alertAt = now;
-      sayCue(cue, estimating, words);
-    }
+    if (cue) sayCue(cue, estimating, words);
   }
   if (words.length && !r.finish) S.voice.say(words.join(' '));
   // remember where you are (for re-acquisition after a reload)
@@ -792,7 +797,7 @@ function catchUp(now, raw, est) {
     }
     const cue = offPaceCue(S.alert, shown, offPace()) || (Math.abs(shown) >= offPace().band ? { gap: shown } : null);
     const words = [];
-    if (cue) { sayCue(cue, false, words); S.voice.say(words.join(' ')); S.alertAt = now; }
+    if (cue) { sayCue(cue, false, words); S.voice.say(words.join(' ')); }
     S.caughtUp = { at: now, gap: shown, said: words.join(' ') || null };
   }
 }
@@ -802,6 +807,21 @@ function catchUp(now, raw, est) {
 // it, 2 more to get ready). Every aid station is announced 200 m before it: "Water in 250
 // meters", or "Gel in 200 meters" at the two gel stations.
 const WATER_CALL = 200;
+
+// Directions: each turn said 50 m before it ("Turn right in 50 meters"), with the ones
+// right after it that are too close to be said on their own ("…, then left") (turns.js)
+function turnDue(d, el) {
+  if (!S.settings.directions || d === null || el < 0 || S.free || !S.turns || !S.turns.length) return null;
+  if (!S.turnCaller) S.turnCaller = new TurnCaller(S.turns);
+  return S.turnCaller.at(d);
+}
+
+// The status line in the last 60 m before a turn: "Turn right in 40 m"
+function turnStatus(d) {
+  if (!S.settings.directions || d === null || !S.turns) return '';
+  const t = S.turns.find((x) => x.d >= d);
+  return t && t.d - d <= 60 ? turnShort(t.angle, t.d - d) : '';
+}
 
 function barList() {
   return S.course && S.course.id === 'marathon' ? (S.settings.bars || []) : [];
@@ -956,6 +976,7 @@ function renderRunPanel(now, el, d, est, estimating) {
     status = `Start line crossed ${Math.abs(diff).toFixed(0)} s ${diff > 0 ? 'after' : 'before'} START · hold the gear to fix`;
   } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · ${r.rehearsal ? 'wait for “Go!”' : 'stay in the corral'}`;
   else if (r.mode === 'live' && r.t0Source === 'gun' && el >= 0 && el < 600 && d !== null && d < 0) status = `Start line in ${Math.round(-d)} m · then chip time`;
+  else if (el >= 0 && turnStatus(d)) status = turnStatus(d);
   else if (fuelStatus(d)) status = fuelStatus(d);
   else if (S.fix && S.fix.acc > 25) status = `Weak GPS ±${Math.round(S.fix.acc)} m`;
   else if (S.needWakeTap) status = 'Tap the screen once to keep it awake';
@@ -1478,6 +1499,7 @@ function renderRunMenu() {
   $('#menu-voice').hidden = (S.settings.voiceMode || 'offpace') !== 'every';
   $('#menu-theme').innerHTML = themeButtons();
   $('#menu-pocket').innerHTML = pocketButtons();
+  $('#menu-dir').innerHTML = dirButtons();
   const rt = $('#btn-retarget');
   if (pendingTarget !== null) {
     rt.hidden = false;
@@ -1527,6 +1549,11 @@ function bindRunMenu() {
   $('#menu-theme').addEventListener('click', (e) => {
     const b = e.target.closest('[data-theme]'); if (!b) return;
     setTheme(b.dataset.theme);
+    renderRunMenu(); armMenuTimer();
+  });
+  $('#menu-dir').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dir-on]'); if (!b) return;
+    setDirections(b.dataset.dirOn === '1');
     renderRunMenu(); armMenuTimer();
   });
   $('#menu-pocket').addEventListener('click', (e) => {
@@ -1628,6 +1655,11 @@ function bindSettings() {
   $('#set-theme').addEventListener('click', (e) => {
     const b = e.target.closest('[data-theme]'); if (!b) return;
     setTheme(b.dataset.theme);
+    renderSettings();
+  });
+  $('#set-dir').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dir-on]'); if (!b) return;
+    setDirections(b.dataset.dirOn === '1');
     renderSettings();
   });
   $('#set-pocket').addEventListener('click', (e) => {
@@ -1790,13 +1822,17 @@ function renderSettings() {
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? `Warnings start ${band} s from the ghost, either way, then come at ${ladderText(band)}, getting worse and getting better, and stop past 5 minutes: “${band}, ${band + 5}, ${band + 10} seconds behind”, then “${band + 5}”, “${band}” as you come back; the same ahead. Right after a warning, “on pace” the moment you meet the ghost again. Nothing else. ${band === 5 ? 'Expect one every 10 minutes or so.' : 'Rarely speaks; 5 s keeps you closer.'} Also your bars (“Take caffeinated bar”) and every aid station (“Water in 200 meters”).`
+    ? `A call at each step as soon as the gap reaches it, getting worse and getting better: ${ladderText(band)}, nothing past 5 minutes. “${band}, ${band + 5}, ${band + 10} seconds behind”, back to “${band + 5}”, out to “${band + 10}” again, back to “${band + 5}”, “${band}”: every one is said, then “on pace” when you meet the ghost. Between ${band} s behind and ${band} s ahead nothing else, and no repeated “on pace”. The same ahead. Also your bars (“Take caffeinated bar”), every aid station (“Water in 200 meters”) and the turns (Directions).`
     : vm === 'every'
       ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';
   $('#set-theme').innerHTML = themeButtons();
   $('#set-theme-note').textContent = THEME_NOTES[s.theme];
   $('#set-pocket').innerHTML = pocketButtons();
+  $('#set-dir').innerHTML = dirButtons();
+  $('#set-dir-note').textContent = s.directions
+    ? `The voice says each turn 50 m before it: “Turn right in 50 meters”, “Turn left in 50 meters, then right” when the next one comes right after, “U-turn to the left in 50 meters”. The line under the number shows it too (“Turn right in 40 m”). On the marathon only the real turns (${S.marathonTurns} of them); on practice routes every corner, “Bear left” at a fork too.`
+    : 'No directions: the map and the course line only.';
   $('#set-gun').textContent = fmtTimeOfDay(gunMs(), true);
   $('#about').textContent = `Version ${VERSION}${S.build ? ` · build ${S.build.slice(0, 7)}` : ''}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles.`;
 }
@@ -1824,6 +1860,19 @@ function themeButtons() {
 function pocketButtons() {
   const p = !!S.settings.pocket;
   return `<button type="button" data-pocket="0" class="${p ? '' : 'on'}">Off</button><button type="button" data-pocket="1" class="${p ? 'on' : ''}">On</button>`;
+}
+
+function dirButtons() {
+  const on = S.settings.directions !== false;
+  return `<button type="button" data-dir-on="0" class="${on ? '' : 'on'}">Off</button><button type="button" data-dir-on="1" class="${on ? 'on' : ''}">On</button>`;
+}
+
+function setDirections(on) {
+  S.settings.directions = on;
+  saveSettings(S.settings);
+  S.turnCaller = null; // from where you are
+  S.voice.unlock();
+  if (on) S.voice.say('Directions on. Turn right in 50 meters.', { force: true });
 }
 
 function setVoiceMode(m) {

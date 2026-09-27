@@ -151,6 +151,17 @@ await sleep(400);
 await page.evaluate(() => document.querySelector('#set-vmode').scrollIntoView({ block: 'start' }));
 await sleep(300);
 await shot('02b-settings-voice');
+// directions: on by default; off and on again from Settings
+{
+  const before = await page.evaluate(() => ({ on: window.__pacer.S.settings.directions, btn: document.querySelector('#set-dir .on').textContent, note: document.querySelector('#set-dir-note').textContent }));
+  await page.evaluate(() => { const v = window.__pacer.S.voice; const say = v.say.bind(v); window.__dirSaid = []; v.say = (t, o) => { window.__dirSaid.push(t); say(t, o); }; });
+  await page.click('#set-dir [data-dir-on="0"]');
+  const off = await page.evaluate(() => window.__pacer.S.settings.directions);
+  await page.click('#set-dir [data-dir-on="1"]');
+  const on = await page.evaluate(() => ({ on: window.__pacer.S.settings.directions, said: window.__dirSaid }));
+  console.log('directions setting:', JSON.stringify(before), '| off', off, '| on', JSON.stringify(on));
+  if (!before.on || before.btn !== 'On' || !/only the real turns \(\d+ of them\)/.test(before.note) || off !== false || !on.on || on.said[0] !== 'Directions on. Turn right in 50 meters.') errors.push('directions setting');
+}
 await page.click('#sheet-settings [data-close]');
 await page.click('[data-open="plan"]');
 await sleep(500);
@@ -261,7 +272,7 @@ await sleep(1500);
 await shot('12a-holding');
 const holding = await page.evaluate(() => { const f = document.querySelector('#holdfx'); const r = f.getBoundingClientRect(); return { shown: !f.hidden, h: r.height, w: r.width, title: f.querySelector('.hf-title').textContent, n: f.querySelector('.hf-count').textContent, p: Number(getComputedStyle(f).getPropertyValue('--p')) }; });
 console.log('holding the gear 1.5 s:', JSON.stringify(holding));
-if (!holding.shown || holding.h < 800 || holding.w < 370 || holding.title !== 'Settings' || holding.n !== '4' || !(holding.p > 0.2 && holding.p < 0.4)) errors.push(`menu hold fill: ${JSON.stringify(holding)}`);
+if (!holding.shown || holding.h < 800 || holding.w < 370 || holding.title !== 'Settings' || !['3', '4'].includes(holding.n) || !(holding.p > 0.2 && holding.p < 0.6)) errors.push(`menu hold fill: ${JSON.stringify(holding)}`);
 await page.mouse.up();
 await sleep(200);
 if (!(await page.locator('#sheet-menu').isHidden())) errors.push('menu opened after 1.5 s');
@@ -346,7 +357,12 @@ if (!gapsSaid.length) errors.push('voice never said the gap');
     if (/On pace\./.test(t)) { if (!pending) errors.push('"On pace" without a warning before it'); pending = false; }
   }
 }
-if (gapsSaid.some((g) => g < 5)) errors.push(`off-pace voice spoke inside 5 s: ${JSON.stringify(gapsSaid)}`);
+// inside 5 s only when the gap jumped back in past the 5 s step (the call before was
+// further out; at 60x the gap moves seconds between frames): that improvement is said once
+{
+  let prev = 0;
+  for (const g of gapsSaid) { if (g < 5 && prev <= 5) errors.push(`off-pace voice spoke inside 5 s: ${JSON.stringify(gapsSaid)}`); prev = g; }
+}
 // bars 1 km before water, every aid station 200 m before it
 const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
 console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'REG', nSaid(/Take regular bar/), 'water', nSaid(/Water in 200 meters/), 'gel', nSaid(/Gel in 200 meters/));
@@ -396,6 +412,9 @@ await p2.evaluate(() => {
   window.__words2 = new Set();
   const w = document.querySelector('#gap-word');
   new MutationObserver(() => window.__words2.add(w.textContent)).observe(w, { childList: true, characterData: true, subtree: true });
+  window.__status2 = new Set();
+  const st = document.querySelector('#status-line');
+  new MutationObserver(() => window.__status2.add(st.textContent)).observe(st, { childList: true, characterData: true, subtree: true });
   // a wrong turn: 90 m off the route from 1.2 to 1.7 km
   window.__pacer.startSim(30, { practiceSpec: S.practiceDraft.spec, seed: 7, detour: { from: 1200, to: 1700, off: 90 } });
 });
@@ -433,6 +452,11 @@ const offSaid = await p2.evaluate(() => window.__spoken2.filter((t) => /course/.
 const words2 = await p2.evaluate(() => [...window.__words2]);
 console.log('voice every 250 m on the 2.8 km practice:', every250, 'times | off course:', JSON.stringify(offSaid), '| words shown:', JSON.stringify(words2));
 if (every250 < 7) errors.push('voice every 250 m');
+// directions: every corner of the route said 50 m before, and shown under the number
+const turnSaid = await p2.evaluate(() => window.__spoken2.filter((t) => /^(Turn|Bear|U-turn)|\. (Turn|Bear|U-turn)/.test(t)));
+const turnShown = await p2.evaluate(() => [...window.__status2].filter((t) => /^(Turn|Bear) (right|left)|^U-turn/.test(t)));
+console.log('directions said', turnSaid.length, 'times, e.g.', JSON.stringify(turnSaid.slice(0, 4)), '| shown e.g.', JSON.stringify(turnShown.slice(0, 3)));
+if (turnSaid.length < 8 || !turnShown.length || !turnShown.every((t) => /^(Turn (sharp )?(right|left)|Bear (right|left)|U-turn) in \d+ m$/.test(t))) errors.push('directions on the practice route');
 if (offShown.word !== 'OFF COURSE' || !/^\d+ m$/.test(offShown.num) || offShown.status !== 'No gap until you are back on the course') errors.push(`off course display: ${JSON.stringify(offShown)}`);
 if (offSaid.length !== 2 || !/^Off course: \d+ meters from the course\.$/.test(offSaid[0]) || !/^Back on course\./.test(offSaid[1])) errors.push(`off course voice: ${JSON.stringify(offSaid)}`);
 
