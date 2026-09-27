@@ -218,6 +218,8 @@ button:disabled { opacity: 0.4; }
 .big-value { font: 800 40px/1.05 var(--cond); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
 .big-value.small-value { font-size: 26px; }
 .set-title.sub { margin-top: 14px; }
+.aid-list { margin: 0 0 4px; font: 600 16px/1.6 var(--ui); color: #cfcfcf; }
+.aid-list b { color: #fff; }
 .text-in {
   width: 100%; min-height: 48px; padding: 0 12px; margin-bottom: 4px; border-radius: 12px;
   background: #1c1c1c; border: 1px solid #3a3a3a; color: #fff; font: 700 20px/1 var(--ui);

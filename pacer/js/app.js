@@ -1218,6 +1218,7 @@ function renderSettings() {
     $('#set-wind-fc-note').textContent = `Forecast for ${fmtRaceDay()} 8:00–11:00 (Open-Meteo, fetched ${fmtTimeOfDay(src.at)}): from ${dirName(src.dir8)} (${Math.round(src.fromDeg)}°), ${Math.round(src.kmh)} km/h${src.gust ? `, gusts to ${Math.round(src.gust)}` : ''}. ${s.wind.kmh === Math.round(src.kmh) && s.wind.fromDeg === src.dir8 ? 'In use.' : 'Changed by hand since.'}`;
   }
   $('#set-aid').textContent = `${s.aidSeconds} s`;
+  $('#set-aid-list').innerHTML = S.marathon.aid.map((a) => `km ${a.km}${a.what ? ` <b>${escapeHtml(a.what)}</b>` : ''}`).join(' · ');
   $('#set-vmode').innerHTML = voiceModeButtons();
   $('#set-voice').innerHTML = voiceButtons();
   $('#set-voice').hidden = (s.voiceMode || 'offpace') !== 'every';
@@ -1232,6 +1233,7 @@ function renderSettings() {
   $('#set-bars-note').textContent = bars.length
     ? `${bars.length} bar${bars.length > 1 ? 's' : ''}, shown on the map: ${bars.map((k) => `km ${k.toFixed(1)} (${fmtClock(S.readyPlan.timeAt(k * 1000))})`).join(' · ')}. The voice says “Time for a bar” as you pass each one; the line under the number counts down the last 300 m.`
     : 'No bars. Type the official km where you want to eat one, e.g. 8.1, 14.8, 24.4.';
+  $('#set-bars-note').textContent += ` The race has gels at km ${S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ')}.`;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
     ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also “time for a bar” at your bars.'

@@ -18,6 +18,9 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>Watches add up the distance between GPS points, so their errors pile up (0.5 % is 200 m, ~50 s, by km 40). This app snaps every GPS point onto the course line and reads the official distance straight from it: the error stays around 5 m (≈1 s) the whole race.</p>
 <p>The course is built on real street centrelines, with the start and finish lines from the official start-area map, and distance measured along the shortest legal line through the corners, as the certified measurement is (42,195 m).</p>
 
+<h3>Wind</h3>
+<p>Optional. Settings → “Use the forecast for race morning” reads the hourly forecast for Oct 4, 8:00–11:00 (Open-Meteo) and gives it to the ghost, which then eases into headwinds and uses tailwinds, same finish time. On race morning the start screen also looks once by itself and offers it on a chip (tap to use it). Without a connection nothing happens: still air is a fine plan.</p>
+
 <h3>Starting</h3>
 <p><b>START</b>: the clock starts when you tap. Tap as you cross the start mat.</p>
 <p><b>LIVE</b> (recommended): nothing to time yourself.</p>
@@ -37,15 +40,19 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>Km 10.7–11.3 and km 36.2–36.7: about 580 m each time without GPS. The number keeps going (with ~) and catches up after the exit.</p>
 
 <h3>Voice</h3>
-<p>Every 250 m, 500 m, 1 km (default) or 2 km of official distance, your choice in Settings or the run menu: “3 seconds behind”, “1 second ahead” or “on pace”; in the tunnel, “about 3 seconds behind”; “time for a bar” at your bars; “chip time” at the start line in LIVE. Nothing else.</p>
+<p><b>When off pace</b> (default): quiet while you are within 10 s of the ghost. When the gap reaches 10 s it says “10 seconds behind” (or ahead), then again at 15, 20, 25 s as it gets worse, never while it gets better, and “on pace” once you are back within 7 s. On a well-run race it hardly speaks.</p>
+<p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run menu. In the tunnel it says “about…”. Also “time for a bar” at your bars and “chip time” at the start line in LIVE. Nothing else.</p>
 <p><b>With Apple Music</b>: by default a recorded voice talks over your music, which keeps playing. That needs the <b>side switch on ring</b> (no orange showing): on silent, iOS mutes this voice. Do Not Disturb keeps calls quiet. The other choice (Settings) is the iPhone's own voice, which works on silent but pauses Apple Music while it talks, and the music may not restart.</p>
 
 <h3>Screen off, pocket mode</h3>
 <p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds). The app keeps the screen from locking by itself.</p>
-<p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks every 1 km.</p>
+<p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks when off pace.</p>
 
 <h3>Bars</h3>
-<p>Settings → Bars: the official km where you want to eat a bar (for example 8.1, 14.8, 24.4, 32.6). Each shows on the map as a green BAR label; the line under the number counts down the last 300 m (“Bar in 240 m”), and the voice says “Time for a bar” as you pass it. They are also in the Splits. The race hands out Krono gels at km 15.1 and 27, oranges at 37.4 and water everywhere, so a bar just before an aid station can be washed down.</p>
+<p>Settings → Bars: the official km where you want to eat a bar (for example 8.1, 14.8, 24.4, 32.6). Each shows on the map as a small BAR label; the line under the number counts down the last 300 m (“Bar in 240 m”), and the voice says “Time for a bar” as you pass it. They are also in the Splits.</p>
+
+<h3>Aid stations</h3>
+<p>km 3.2 (water only) · 5.8 · 8.4 · 11.1 · 12.6 · <b>15.1 gels</b> · 19.3 · 22.9 · 24.7 sponges · <b>27 gels</b> · 28.9 · 32.9 · 36.3 · 37.4 oranges · 40.6. Water and Krono electrolytes at every station but the first, toilets at all of them (runner's guide). A bar eaten just before a station can be washed down. On the map they are small white drops, marked “gels”, “sponges” or “oranges” when they have them; also listed in Settings and in the Splits.</p>
 
 <h3>Colours</h3>
 <p>Settings → Colours. <b>B&amp;W</b> (default): white on black with one yellow accent, your arrow; the most contrast in sunlight. <b>Amber</b> and <b>Ice</b>: everything in one colour. <b>Signal</b>: the number panel and the line ahead turn red when behind, green when ahead. On the map, in every theme: white drops are aid stations (with “gels”, “sponges” or “oranges” when they have them), round badges are the kilometres, BAR labels are your bars.</p>
@@ -73,7 +80,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <li>Keep the phone warm inside your clothes: cold drains old batteries fast.</li>
 <li><b>Do Not Disturb</b> (or Airplane mode — GPS keeps working) so no call or notification covers the screen. <b>Side switch on ring</b>, so the voice can talk over your music.</li>
 <li>Open the app in the corral 10 minutes early to get a GPS lock (chip ±5 m).</li>
-<li>Optional: wind forecast in Settings. Brightness up.</li>
+<li>Wind: tap the “Forecast wind” chip if it shows (or Settings → Use the forecast). Brightness up.</li>
 <li>Press LIVE in the corral (or START as you cross the mat). Guided Access if you use it.</li>
 </ol>
 <p><b>After the finish</b>: the finish time pops up with Export GPX (Strava, etc.). Later: hold ••• 5 s → Export GPX.</p>

@@ -18,13 +18,13 @@ connection at all.
 | **LIVE** | Press it in the corral from 5:00 on race morning: it counts down to 8:00:00, starts the clock by itself, then switches to your chip time as you run over the start line (`LIVE · CHIP`, the voice says “Chip time”), so an early or late gun does not matter. Pressed late, it still finds your crossing in the last 20 min. The crossing is the last one before you are 60 m past the line, so GPS wobble while standing at the line cannot fake an early one. **Try it now: Practice → LIVE rehearsal** (gun one minute after the tap, a “Go!”, start line 30 m ahead). |
 | **Running screen** | Top half: tilted map that turns with the course, more road ahead than behind, zooming out on straights and in before turns. You are the big yellow arrow; the ghost is the white arrow, at the front of the bright line (the course is thin behind the ghost and bright from it on). Bottom half: the number (`+3` = 3 s ahead, `−3` = 3 s behind), then time, official km, and the ghost's pace for the stretch you are on. Top right: projected finish (target + gap). |
 | **Tunnel** | Tunnel Joseph-Samson (km 10.7–11.3 and 36.2–36.7, ~580 m each) has no GPS: the number shows `~` with stripes and is estimated from your pace relative to the ghost; it resyncs after the exit. |
-| **Voice** | Every 250 m, 500 m, 1 km (default) or 2 km of official distance: “3 seconds behind”, “1 second ahead”, “on pace” (“about …” in the tunnel), plus “time for a bar” and “chip time”. A recorded voice (223 clips, Piper `en_US-joe-medium`, CC0) plays through Web Audio in a `transient` audio session, so **Apple Music keeps playing** under it; that needs the side switch on ring. The other setting uses the iPhone's own voice, which pauses the music. |
+| **Voice** | **When off pace** (default): quiet within 10 s of the ghost, then “10 seconds behind/ahead” and again at 15, 20, 25 s as it gets worse, “on pace” once back within 7 s. Or every 250 m, 500 m, 1 km or 2 km. “About …” in the tunnel, plus “time for a bar” and “chip time”. A recorded voice (223 clips, Piper `en_US-joe-medium`, CC0) plays through Web Audio in a `transient` audio session, so **Apple Music keeps playing** under it; that needs the side switch on ring. The other setting uses the iPhone's own voice, which pauses the music. |
 | **Bars** | Settings → Bars: the official km where you eat a bar (placeholder 8.1, 14.8, 24.4, 32.6). Green BAR labels on the map, “Bar in 240 m” on the running screen, “Time for a bar” by voice, listed in the Splits. |
 | **Stopping** | Nothing reacts to a tap. Hold the bottom row (**•••**) for **5 s** to open the run menu: a bar fills across the row and the line above counts down; letting go early does nothing. Changes in the menu need a 1 s hold; stopping needs a 5 s hold. A reload, crash or swipe-away resumes the run from the saved start time. |
 | **Screen off** | iOS freezes web apps while the phone is locked: no GPS, no voice, no logic until it is unlocked (only a native app could keep running). The app keeps the screen awake itself; when it is unlocked after a pause it catches up and says the gap within a few seconds. **Pocket mode** (Settings or run menu) is the battery-friendly alternative: black screen (black OLED pixels draw almost nothing), map paused, GPS and voice running; tap to look for 12 s. |
 | **Colours** | B&W (default: white on black, one yellow accent for your arrow), Amber and Ice (one colour each), Signal (panel and line turn red/green). Aid stations (white drops, with gels/sponges/oranges noted) and bars are black and white in every theme. |
 | **Run menu** | Start the clock at your detected start-line crossing, use gun time, nudge the start ±1/±5 s, set a new finish target from here, voice interval, colours, pocket mode, export GPX. |
-| **Settings** | Target time, race-morning wind (direction + speed), seconds lost per aid station, voice interval and music behaviour, bars, colours, pocket mode, gun time (if the start is delayed), a 20× simulated race (a runner 19 s down at km 36 who finishes in 2:59:19). |
+| **Settings** | Target time, race-morning wind (by hand, or from the Open-Meteo forecast for 8:00–11:00, fetched once; on race morning the start screen offers it on a chip), seconds lost per aid station and what each station has, voice mode and music behaviour, bars, colours, pocket mode, gun time (if the start is delayed), a 20× simulated race (a runner 19 s down at km 36 who finishes in 2:59:19). |
 | **Splits** | Every kilometre of the even-effort plan with clock and time of day. |
 | **Practice** | Builds a route on real streets from where you stand to Pavillon Charles-De Koninck (DKN, Université Laval) — or any point you tap — there and back or one way, at the ghost pace you choose, with even effort on the hills. **Free run** works anywhere without a route. |
 
@@ -67,8 +67,9 @@ Never, Guided Access, Do Not Disturb, keeping the old battery warm).
   redraws/s instead of 9.4 while running, main-thread work down a third, 0.1 redraws/s instead
   of 3.7 on the start screen while standing still.
 - **Offline**: a service worker precaches all 10.2 MB (1.6 MB of it voice clips) on the first
-  visit. Updates wait until you tap “Update ready” on the start screen, so nothing reloads
-  during a run.
+  visit. A new version takes over as soon as it is downloaded and the start screen reloads onto
+  it by itself; during a run nothing reloads (the new version is used from the next launch).
+  The build number is at the bottom of Settings.
 
 ## Limits
 
