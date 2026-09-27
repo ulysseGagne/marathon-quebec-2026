@@ -1,7 +1,7 @@
 // Service worker: everything the pacer needs is cached on first visit, so it works with
 // no connection at all. Updates wait until you tap "Update ready" on the start screen,
 // so nothing ever reloads during a run.
-const VERSION = '7f1ca4be14af';
+const VERSION = '780997555dbc';
 const CACHE = `pacer-${VERSION}`;
 const ASSETS = [
   "./",

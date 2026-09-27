@@ -120,8 +120,15 @@ function useCourse(course, plan, { keepTracker = false } = {}) {
   S.overviewShown = false;
 }
 
+// Where to look for you when (re)acquiring the course: your last saved position if it
+// is recent (after a reload), otherwise where the ghost is, otherwise the start line.
 function trackerHint(t) {
   const r = S.run;
+  const last = r ? loadLastPos(r.id) : null;
+  if (last && t - last.t < 15 * 60000 && t >= last.t) {
+    const dt = (t - last.t) / 1000;
+    return { d: last.d + last.v * dt, v: last.v, sd: 60 + 1.5 * dt };
+  }
   if (r && S.plan && t > r.t0) {
     const el = (t - r.t0) / 1000;
     const d = S.plan.distAt(el);
@@ -263,6 +270,7 @@ function newRun(kind, mode, extra = {}) {
 
 async function beginRun(run) {
   S.voice.unlock();
+  S.voiceUnlocked = true;
   enableCompass();
   S.wake.enable().then((m) => { if (!m) S.needWakeTap = true; });
   S.run = run;
@@ -392,6 +400,11 @@ function runningFrame(now, dt) {
       S.lastKm = km;
       if (!r.finish) S.voice.say(spokenGap(S.gap.state().value ?? 0));
     }
+  }
+  // remember where you are (for re-acquisition after a reload)
+  if (est && !S.free && !r.sim && est.mode === 'gps' && Date.now() - (S.lastPosSaved || 0) > 15000) {
+    S.lastPosSaved = Date.now();
+    saveLastPos(r.id, { t: now, d: est.d, v: est.v });
   }
   // finish
   const total = S.course ? S.course.total : null;
@@ -639,6 +652,7 @@ function bindUi() {
     renderChips();
   });
   document.addEventListener('pointerdown', async () => {
+    if (S.phase === 'running' && !S.voiceUnlocked) { S.voice.unlock(); S.voiceUnlocked = true; }
     if (S.needWakeTap && S.phase === 'running') {
       const ok = await S.wake.enable();
       if (ok) { S.needWakeTap = false; renderChips(); }
@@ -1145,6 +1159,17 @@ function applyUpdate() {
       reg.waiting.postMessage({ type: 'skipWaiting' });
     } else location.reload();
   });
+}
+
+function loadLastPos(runId) {
+  try {
+    const v = JSON.parse(localStorage.getItem('pacer.lastpos') || 'null');
+    return v && v.run === runId ? v : null;
+  } catch { return null; }
+}
+
+function saveLastPos(runId, p) {
+  try { localStorage.setItem('pacer.lastpos', JSON.stringify({ run: runId, ...p })); } catch { /* ignore */ }
 }
 
 // ---------------------------------------------------------------- helpers

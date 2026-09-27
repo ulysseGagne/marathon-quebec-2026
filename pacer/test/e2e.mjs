@@ -151,6 +151,46 @@ await sleep(800);
 await p2.screenshot({ path: join(out, '24-practice-finish.png') });
 console.log('practice finish', await p2.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));
 
+// ---- a real run survives a page reload
+const ctx3 = await browser.newContext({
+  viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  geolocation: { latitude: 46.82637, longitude: -71.24905, accuracy: 5 }, permissions: ['geolocation'],
+});
+const p3 = await ctx3.newPage();
+p3.on('pageerror', (e) => errors.push(String(e)));
+await p3.goto('http://localhost:8765/pacer/');
+await p3.waitForSelector('#app.phase-ready', { timeout: 60000 });
+await sleep(1500);
+await p3.click('#btn-start');
+await sleep(500);
+const t0 = await p3.evaluate(() => window.__pacer.S.run.t0);
+// feed 20 s of running along the course from the start line at 4 m/s
+for (let i = 0; i <= 20; i++) {
+  await p3.evaluate((dm) => {
+    const { S, handleFix } = window.__pacer;
+    const [lat, lon] = S.course.line.latLonAt(dm);
+    handleFix({ t: Date.now(), lat, lon, acc: 5, speed: 4 });
+  }, i * 4);
+  await sleep(1000);
+}
+const before = await p3.evaluate(() => { const { S, clock } = window.__pacer; return S.tracker.peek(clock.now()).d; });
+// the phone's own GPS now reports where the runner is (84 m past the line)
+const here = await p3.evaluate(() => window.__pacer.S.course.line.latLonAt(84));
+await ctx3.setGeolocation({ latitude: here[0], longitude: here[1], accuracy: 5 });
+await p3.reload();
+await p3.waitForSelector('#app.phase-running', { timeout: 60000 });
+await sleep(800);
+const after = await p3.evaluate(async () => {
+  const { S, handleFix, clock } = window.__pacer;
+  const [lat, lon] = S.course.line.latLonAt(92);
+  handleFix({ t: Date.now(), lat, lon, acc: 5, speed: 4 });
+  const est = S.tracker.peek(clock.now());
+  return { t0: S.run.t0, d: est && est.d, phase: S.phase };
+});
+console.log('reload test: t0 kept', after.t0 === t0, 'd before', before.toFixed(1), 'after', after.d && after.d.toFixed(1), after.phase);
+await p3.screenshot({ path: join(out, '30-resumed.png') });
+if (after.t0 !== t0 || !(Math.abs(after.d - 92) < 25)) errors.push('reload/resume failed');
+
 console.log('console errors:', errors.length ? errors : 'none');
 await browser.close();
 server.close();
