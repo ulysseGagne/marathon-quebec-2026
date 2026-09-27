@@ -90,6 +90,14 @@ console.log('start screen reminder:', preTxt);
 if (!/^CAF bar at 7:20/.test(preTxt || '')) errors.push('pre-start bar reminder');
 await page.evaluate(() => { window.__pacer.S.follow = true; window.__pacer.S.overviewShown = false; });
 
+await page.click('[data-open="check"]');
+await sleep(400);
+const readyCheck = await page.evaluate(() => ({ rows: document.querySelectorAll('#check-body .chk').length, text: document.querySelector('#check-body').textContent }));
+console.log('pre-race check (start screen):', readyCheck.rows, 'rows |', readyCheck.text.slice(0, 200));
+await shot('02a-check');
+if (readyCheck.rows < 7 || !/Phone time/.test(readyCheck.text) || !/LIVE/.test(readyCheck.text) || !/CAF 21\.9/.test(readyCheck.text)) errors.push('pre-race check');
+await page.click('#sheet-check [data-close]');
+await sleep(300);
 await page.click('[data-open="settings"]');
 await sleep(500);
 await shot('02-settings');
@@ -156,8 +164,9 @@ await page.click('#sheet-practice [data-close]');
 await sleep(500);
 
 // before the gun the ghost waits on the start line (official km 0), where the white bar is:
-// a demo race at 1x, looked at during its 20 s countdown, then stopped
-await page.evaluate(() => window.__pacer.startSim(1, { seed: 3 }));
+// a demo race at 4x, looked at during its 20 s countdown (5 s here), then stopped
+await page.evaluate(() => { const v = window.__pacer.S.voice; const say = v.say.bind(v); window.__cd = []; v.say = (t, o) => { window.__cd.push(t); say(t, o); }; });
+await page.evaluate(() => window.__pacer.startSim(4, { seed: 3 }));
 await sleep(1500);
 const waiting = await page.evaluate(() => {
   const { S, clock } = window.__pacer;
@@ -169,6 +178,17 @@ const waiting = await page.evaluate(() => {
 });
 console.log('ghost before the gun:', JSON.stringify(waiting));
 if (!(waiting.el < 0) || waiting.off === null || waiting.off > 0.5 || waiting.bars !== 2) errors.push('ghost not waiting on the start line');
+// ... the voice counts down to the gun, and the pre-race check is one tap away
+const cdChip = await page.evaluate(() => !!document.querySelector('[data-act="check"]'));
+await page.click('[data-act="check"]');
+await sleep(400);
+const cdCheck = await page.evaluate(() => document.querySelector('#check-body').textContent);
+await shot('05b-check-live');
+await page.evaluate(() => document.querySelector('#sheet-check [data-close]').click());
+await sleep(3500);
+const cdSaid = await page.evaluate(() => window.__cd);
+console.log('countdown said:', JSON.stringify(cdSaid), '| check chip', cdChip, '|', cdCheck.slice(0, 160));
+if (!cdSaid.includes('Start in 15 seconds.') || !cdSaid.includes('Gun time.') || !cdChip || !/LIVE is on/.test(cdCheck) || !/Phone time/.test(cdCheck)) errors.push('LIVE countdown / pre-race check');
 await page.evaluate(() => window.__pacer.stopRun());
 await sleep(500);
 

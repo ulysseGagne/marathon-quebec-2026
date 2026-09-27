@@ -27,10 +27,11 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p><b>START</b>: the clock starts when you tap. Tap as you cross the start mat.</p>
 <p><b>LIVE</b> (recommended): nothing to time yourself.</p>
 <ol>
-<li>From 5:00 on race morning, press LIVE in the corral. The number counts down to 8:00:00 (phone time).</li>
-<li>At 8:00:00 the clock starts by itself (LIVE · GUN). The line under the number counts down the metres to the start line.</li>
-<li>As you run over the start line, the app switches to your chip time by itself (LIVE · CHIP) and the voice says “Chip time”. From then on the exact moment of the gun no longer matters: a gun a few seconds early or late is corrected at the line.</li>
+<li>Around 7:45 in the corral, press LIVE (it works from 5:00). The number counts down to 8:00:00 (phone time) and so does the voice, to tell you it is working: “Start in 10 minutes”… every 5 minutes from half an hour before, every minute from 10, then 2 and a half, 2, a minute and a half, 1, 45, 30 and 15 seconds. <b>Check</b> (top left) shows everything at a glance.</li>
+<li>At 8:00:00 the voice says “Gun time” and the clock starts by itself (LIVE · GUN 8:00:00). It stays quiet about the gap until chip time takes over.</li>
+<li>About 15 s after you run over the start line, the voice says “Chip time” and the label becomes LIVE · CHIP with the time you crossed, to the second. From then on the exact moment of the gun no longer matters.</li>
 </ol>
+<p><b>How it finds your crossing:</b> not when you reach the line, but when you leave it for good. Standing at the line, GPS drift moves you back and forth across it by a few metres; that does not count. It counts once you are 60 m past the line, and takes the moment you crossed it on the way, from the GPS points on either side (one a second). If GPS had put you just past the line while you stood there, it takes the moment you started moving. It looks from 30 s before the gun, so leaving at 7:59:55 counts. In simulations of standing right at the line for 10 minutes, then starting, it was within 2 s every time (half a second typically). If it never sees a crossing, it stays on gun time: off by your few seconds to the line, on the safe side.</p>
 <p>Pressed LIVE only after starting to run? It still counts from 8:00:00 and finds your start-line crossing in the last 20 minutes if the app was open.</p>
 <p>Try it this week: <b>Practice → LIVE rehearsal</b> runs the same thing on your practice route, with the gun one minute after you press it (the voice says “Go!”) and a start line 30 m ahead of where you stand.</p>
 <p>Tapped START too early or too late? Hold the <b>gear</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”. The label at the top right then says CHIP and the time you crossed.</p>
@@ -97,7 +98,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <li>About 7:20: the pre-start bar (CAF), with a few sips of water. The start screen reminds you.</li>
 <li>Open the app in the corral 10 minutes early to get a GPS lock (chip ±5 m).</li>
 <li>Wind: tap the “Forecast wind” chip if it shows (or Settings → Use the forecast). Brightness up.</li>
-<li>Press LIVE in the corral (or START as you cross the mat). Guided Access if you use it.</li>
+<li>Around 7:45: press <b>LIVE</b>, then tap <b>Pre-race check</b> (top left): everything should have a ✓. Listen for the countdown. Guided Access if you use it.</li>
 </ol>
 <p><b>After the finish</b>: the finish time pops up with Export GPX (Strava, etc.). Later: hold the gear 5 s → Export GPX.</p>
 

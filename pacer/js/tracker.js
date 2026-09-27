@@ -228,11 +228,13 @@ export class Tracker {
     }
   }
 
-  // Times (ms) at which the estimate crossed official distance dLine going forward and
-  // kept going, oldest first, from the last 20 minutes of estimates. For each pass it is
-  // the LAST forward crossing before reaching dLine + 60 m (within 90 s): standing a few
-  // metres behind the line, GPS noise can nudge the estimate across it and back, and only
-  // the crossing that led somewhere counts.
+  // Times (ms) at which you left the line at official distance dLine for good, oldest
+  // first, from the last 20 minutes of estimates. A pass counts once the estimate is 60 m
+  // past the line within 90 s of leaving it: standing at the line, GPS noise moves the
+  // estimate back and forth across it, and that does not count. The time is the last
+  // forward crossing on the way out, interpolated between estimates; or, when the GPS had
+  // put you a few metres past the line while you stood at it (so there was no crossing on
+  // the way out), the moment you started moving.
   crossingsOf(dLine, afterT = -Infinity) {
     const h = this.history;
     const out = [];
@@ -243,12 +245,26 @@ export class Tracker {
         const f = (dLine - a.d) / (b.d - a.d);
         up = a.t + f * (b.t - a.t);
       }
-      if (up !== null && b.d >= dLine + 60) {
-        if (up >= afterT && b.t - up <= 90000) out.push(up);
+      if (a.d < dLine + 60 && b.d >= dLine + 60) {
+        const s = h[this._moveStart(i)];
+        let c = up;
+        if (s.d >= dLine && s.d <= dLine + 12 && (c === null || c < s.t)) c = s.t;
+        if (c !== null && c >= afterT && b.t - c <= 90000) out.push(c);
         up = null;
       }
     }
     return out;
+  }
+
+  // Index of the estimate where the unbroken forward movement that led to estimate i began
+  // (moving means at least 2 m in 3 s).
+  _moveStart(i) {
+    const h = this.history;
+    for (let j = i; ; j--) {
+      let k = j;
+      while (k > 0 && h[j].t - h[k - 1].t <= 3000) k--;
+      if (k === j || h[j].d - h[k].d < 2) return j;
+    }
   }
 
   crossingOf(dLine, afterT = -Infinity) {

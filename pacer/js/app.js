@@ -161,7 +161,7 @@ function setupRunObjects() {
   S.alertAt = 0;
   S.lastBar = null;
   S.lastWater = null;
-  S.goSaid = false;
+  S.countdownAt = null;
   S.resume = null;
   S.peekUntil = 0;
   S.lastTrailN = 0;
@@ -227,6 +227,60 @@ function onPos(pos) {
   S.gpsError = null;
   handleFix({ t, lat: c.latitude, lon: c.longitude, acc: c.accuracy, speed: c.speed ?? -1, heading: c.heading });
   if (first) { renderChips(); renderWelcome(); }
+}
+
+// ---- pre-race check: one screen of text, what is set, what is missing, what happens next
+function renderCheck() {
+  const s = S.settings, r = S.run, now = clock.now(), g = gunMs();
+  const rows = [];
+  const add = (state, html) => rows.push(`<div class="chk ${state}"><span class="chk-i">${state === 'ok' ? '✓' : state === 'bad' ? '!' : '•'}</span><span>${html}</span></div>`);
+  const toGun = (g - now) / 1000;
+  // the clock
+  if (r && r.kind === 'race' && r.mode === 'live' && now < r.t0) {
+    add('ok', `<b>LIVE is on.</b> The clock starts by itself at the ${fmtTimeOfDay(g, true)} gun, then switches to your chip time when you cross the start line. The voice counts down, then says “Gun time”, and “Chip time” about 15 s after you cross.`);
+  } else if (r && r.kind === 'race') {
+    add('ok', `<b>Running</b> since ${fmtTimeOfDay(r.t0, true)} (${{ chip: 'your start-line crossing', gun: 'the gun: chip time when you cross the line', tap: 'your START tap', adjusted: 'adjusted by hand' }[r.t0Source] || r.t0Source}).`);
+  } else if (toGun > 0 && toGun < 3 * 3600) {
+    add('bad', `<b>Not started.</b> In the corral, press <b>LIVE</b>: it starts at the gun by itself and switches to your chip time at the start line.`);
+  } else {
+    add('info', `On race morning, from ${fmtTimeOfDay(g - 3 * 3600e3)}: press <b>LIVE</b> in the corral. It starts at the ${fmtTimeOfDay(g, true)} gun by itself and switches to your chip time at the start line.`);
+  }
+  // GPS
+  const fresh = S.fix && Date.now() - S.fixReal < 30000;
+  if (fresh) {
+    const [la, lo] = S.marathon.line.latLonAt(0);
+    const dist = haversine(S.fix.lat, S.fix.lon, la, lo);
+    add(S.fix.acc <= 20 ? 'ok' : 'bad', `GPS ±${Math.round(S.fix.acc)} m${dist < 5000 ? ` · ${dist < 1000 ? `${Math.round(dist)} m` : `${(dist / 1000).toFixed(1)} km`} from the start line` : ''}.`);
+  } else if (S.gpsError === 'Location blocked') add('bad', 'Location is blocked: Help → Location.');
+  else add('bad', 'No GPS yet: step outside, away from buildings; it can take a minute.');
+  if (S.offline === true) add('ok', 'Works offline: no connection needed.');
+  else if (S.offline === false) add('bad', 'Still saving for offline: keep the connection a minute.');
+  // screen
+  if (S.phase === 'running' && S.needWakeTap) add('bad', 'Tap the screen once so it stays on.');
+  else add(S.phase === 'running' ? 'ok' : 'info', `${S.phase === 'running' ? 'The screen stays on by itself.' : 'Once LIVE is pressed the screen stays on by itself.'} Do not lock the phone${s.pocket ? '; Pocket mode is on: black screen, voice only' : ' (Pocket mode blacks it out instead)'}.`);
+  // plan
+  const margin = 3 * 3600 - s.target;
+  add('ok', `Target <b>${fmtClock(s.target)}</b>${margin > 0 ? ` (${margin < 60 ? `${margin} s` : `${Math.round(margin / 60)} min`} under 3:00)` : ''} · flat pace about ${fmtPace(flatPace())}/km · ${s.wind.kmh > 0 ? `wind from ${dirName(s.wind.fromDeg)} ${s.wind.kmh} km/h` : 'still air'}.`);
+  // voice
+  const vm = voiceMode();
+  if (vm === 'off') add('bad', 'Voice is off: no calls for pace, bars or water.');
+  else add('ok', `Voice ${vm === 'every' ? `every ${voiceLabel(voiceEvery())}` : `when off pace, from ${offPace().band} s, and “on pace” when you meet the ghost`}; bars 1 km before their water; every station 200 m before. Volume up.`);
+  // fuel
+  const pre = s.preBar || 'caf';
+  if (pre !== 'none') {
+    const at = g - 40 * 60000;
+    const kind = pre === 'caf' ? 'CAF' : 'REG';
+    if (now >= g - 50 * 60000 && now < g - 20 * 60000) add('bad', `<b>Now: the ${kind} bar</b>, with a few sips of water (${fmtTimeOfDay(at)}, 40 min before the gun).`);
+    else if (now >= g - 20 * 60000 && now < g + 3600e3) add('ok', `${kind} bar at ${fmtTimeOfDay(at)}: eaten by now.`);
+    else add('info', `Before the gun: the ${kind} bar at ${fmtTimeOfDay(at)}, with a few sips of water.`);
+  }
+  const fuel = (s.bars || []).map((b) => ({ d: b.km * 1000, t: `${b.caf ? 'CAF' : 'REG'} ${b.km.toFixed(1)}` }))
+    .concat(s.raceGels !== false ? S.marathon.aid.filter((a) => a.what === 'gels').map((a) => ({ d: a.d, t: `gel ${a.km}` })) : [])
+    .sort((a, b) => a.d - b.d).map((x) => x.t);
+  if (fuel.length) add('info', `On the course: ${fuel.join(' · ')}.`);
+  add('info', 'Do Not Disturb on · brightness up · earbuds in.');
+  const head = `<p class="chk-time">Phone time ${fmtTimeOfDay(now, true)} · gun ${fmtTimeOfDay(g, true)}${toGun > 0 && toGun < 3 * 3600 ? ` (in ${fmtCountdown(toGun)})` : ''}</p>`;
+  $('#check-body').innerHTML = head + rows.join('');
 }
 
 // ---- first launch: "Before you start", location and compass, one button each
@@ -557,11 +611,13 @@ function runningFrame(now, dt) {
   }
   if (S.course && !S.free && (S.course.id === 'marathon' || r.mode === 'live')) detectCrossing(now, el);
   if (S.resume) catchUp(now, raw, est);
-  // LIVE rehearsal: there is no real gun, so the voice gives it
-  if (r.rehearsal && !S.goSaid && el >= 0) {
-    S.goSaid = true;
-    if (el < 5) S.voice.say('Go!', { force: true });
-  }
+  // LIVE: count down to the gun out loud, so you know it is running ("Start in 5 minutes"
+  // … "15 seconds"), then "Gun time" (the rehearsal says "Go!": there is no real gun)
+  if (r.mode === 'live') countdown(el, r);
+  // In LIVE, between the gun and your start-line crossing the clock runs from the gun: no
+  // gap talk until chip time has taken over (it does ~60 m past the line; if it never
+  // finds your crossing, the gap from the gun is spoken from 100 m on).
+  const waiting = r.mode === 'live' && r.t0Source === 'gun' && (d === null || d < 100);
   // what to say this frame: a bar, the next aid station, the gap every N metres
   const words = [];
   const bar = barDue(d, el);
@@ -569,7 +625,7 @@ function runningFrame(now, dt) {
   const aid = waterDue(d, el);
   if (aid) words.push(isGel(aid) ? 'Gel in 200 meters.' : 'Water in 200 meters.');
   const every = voiceEvery();
-  if (every && d !== null && el > 0) {
+  if (every && d !== null && el > 0 && !waiting) {
     const k = Math.floor(d / every);
     if (S.lastVoiceK === null) S.lastVoiceK = k;
     else if (k > S.lastVoiceK) {
@@ -584,7 +640,7 @@ function runningFrame(now, dt) {
   // or only when off pace: from 10 s, every 5 s step out and back in, then "on pace" at the
   // ghost
   const g = S.gap.state();
-  if (voiceMode() === 'offpace' && d !== null && el > 30 && !r.finish && !S.resume && g.shown !== null &&
+  if (voiceMode() === 'offpace' && d !== null && el > 30 && !waiting && !r.finish && !S.resume && g.shown !== null &&
       now - (S.alertAt || 0) > 20000) {
     const cue = offPaceCue(S.alert, g.shown, offPace());
     if (cue) {
@@ -619,6 +675,35 @@ function offPace() { return offPaceConfig(S.settings.voiceBand === 10 ? 10 : 5);
 // An off-pace cue in words: "15 seconds behind", "On pace."
 function sayCue(cue, estimating, words) {
   words.push(cue.pace ? 'On pace.' : (estimating ? 'About ' : '') + spokenGap(cue.gap));
+}
+
+// The countdown marks (seconds before the gun) said out loud in LIVE: every 5 minutes from
+// half an hour, every minute from 10, then 2:30, 2:00, 1:30, 1:00, 0:45, 0:30, 0:15.
+const COUNTDOWN = [1800, 1500, 1200, 900, 600, 540, 480, 420, 360, 300, 240, 180, 150, 120, 90, 60, 45, 30, 15];
+
+function countdownWords(sec) {
+  if (sec === 150) return 'Start in 2 and a half minutes.';
+  if (sec === 90) return 'Start in a minute and a half.';
+  if (sec >= 60) return `Start in ${sec / 60} minute${sec === 60 ? '' : 's'}.`;
+  return `Start in ${sec} seconds.`;
+}
+
+function countdown(el, r) {
+  const left = -el;
+  // the first frame: marks already behind are not said
+  if (S.countdownAt === null) S.countdownAt = el < 0 ? COUNTDOWN.find((m) => m < left) ?? 0 : -1;
+  if (S.countdownAt === -1) return;
+  if (el >= 0) {
+    S.countdownAt = -1;
+    if (el < 5) S.voice.say(r.rehearsal ? 'Go!' : 'Gun time.', { force: !!r.rehearsal });
+    renderChips();
+    return;
+  }
+  if (S.countdownAt > 0 && left <= S.countdownAt) {
+    const mark = S.countdownAt;
+    S.countdownAt = COUNTDOWN.find((m) => m < mark) ?? 0;
+    if (left > mark - 3) S.voice.say(countdownWords(mark));
+  }
 }
 
 // After iOS paused the app (screen locked, another app in front), say where you stand as
@@ -978,6 +1063,10 @@ function renderChips() {
   } else if (S.phase === 'running' && S.needWakeTap) {
     chips.push('<button class="chip tap" data-act="wake">Tap: keep screen awake</button>');
   }
+  // waiting for the gun in LIVE: the check is one tap away
+  if (S.phase === 'running' && S.run && S.run.mode === 'live' && !S.run.rehearsal && clock.now() < S.run.t0) {
+    chips.push('<button class="chip tap" data-act="check">Pre-race check</button>');
+  }
   const html = chips.join('');
   if (S.lastPanel.chips !== html) { $('#chips').innerHTML = html; S.lastPanel.chips = html; }
   if (S.phase === 'ready' && S.lastPanel.badges !== '') { $('#badges').innerHTML = ''; S.lastPanel.badges = ''; }
@@ -1019,6 +1108,7 @@ function bindUi() {
     if (b.dataset.act === 'update') applyUpdate();
     if (b.dataset.act === 'location') { openSheet('help'); return; }
     if (b.dataset.act === 'locate') startGps();
+    if (b.dataset.act === 'check') { openSheet('check'); return; }
     if (b.dataset.act === 'wind' && S.windSuggest) {
       const w = S.windSuggest;
       S.windSuggest = null;
@@ -1144,6 +1234,11 @@ function openSheet(name) {
   if (name === 'plan') renderPlan();
   if (name === 'help') { $('#help-body').innerHTML = helpHtml(VERSION, helpEnv()); $('#help-body').scrollTop = 0; }
   if (name === 'practice') openPractice();
+  if (name === 'check') {
+    renderCheck();
+    clearInterval(S.checkTimer);
+    S.checkTimer = setInterval(() => { if ($('#sheet-check').hidden) clearInterval(S.checkTimer); else renderCheck(); }, 1000);
+  }
   $('#scrim').hidden = false;
   el.hidden = false;
 }

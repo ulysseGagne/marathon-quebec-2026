@@ -48,6 +48,7 @@
         <button type="button" data-open="practice">Practice</button>
         <button type="button" data-open="plan">Splits</button>
         <button type="button" data-open="settings">Settings</button>
+        <button type="button" data-open="check">Check</button>
         <button type="button" data-open="help">Help</button>
       </nav>
     </div>
@@ -241,6 +242,12 @@
       <button type="button" class="wide" id="wl-done">Later</button>
       <p class="muted small">Later on: the buttons at the top of the map, or Help → Location.</p>
     </div>
+  </div>
+
+  <!-- Pre-race check: what is set, what is missing, what happens next -->
+  <div id="sheet-check" class="sheet" hidden>
+    <div class="sheet-head"><h2>Pre-race check</h2><button class="x" type="button" data-close>Close</button></div>
+    <div class="sheet-body" id="check-body"></div>
   </div>
 
   <div id="sheet-help" class="sheet" hidden>

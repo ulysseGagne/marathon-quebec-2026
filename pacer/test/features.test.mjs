@@ -27,6 +27,28 @@ test('start line: the crossing that led somewhere, not GPS noise while standing 
   }
 });
 
+test('start line: standing right at the line for 10 minutes, GPS putting you just past it', () => {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const tr = new Tracker(course);
+    const rnd = mulberry32(seed);
+    let t = 1.79e12;
+    const add = (d) => { tr.history.push({ t, d }); t += 1000; };
+    // walk up to the line, then stand 1 m behind it for 10 minutes; the GPS puts you about
+    // 3 m further on, drifting, so the estimate sits past the line and wobbles
+    let bias = 3;
+    for (let s = 0; s < 20; s++) add(-40 + 2 * s + bias + 0.8 * gauss(rnd));
+    for (let s = 0; s < 600; s++) { bias = Math.max(1, Math.min(5, bias + 0.1 * gauss(rnd))); add(-1 + bias + 1.2 * gauss(rnd)); }
+    // the gun: from a standstill, speeding up to 4 m/s; really crossing ~0.35 s before `go`
+    const go = t;
+    let d = -1, v = 0;
+    for (let s = 0; s < 40; s++) { v = Math.min(4, v + 1.5); d += v; add(d + bias + 0.8 * gauss(rnd)); }
+    const truth = go - 330;
+    const all = tr.crossingsOf(0, go - 30000);
+    assert.equal(all.length, 1, `seed ${seed}: ${all.length} crossings`);
+    assert.ok(Math.abs(all[0] - truth) < 2000, `seed ${seed}: off by ${((all[0] - truth) / 1000).toFixed(1)} s`);
+  }
+});
+
 test('start line: a warm-up stride across the line and back is a separate pass', () => {
   const tr = new Tracker(course);
   const t0 = 1.79e12;

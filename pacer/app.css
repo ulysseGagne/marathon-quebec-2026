@@ -137,7 +137,7 @@ button:disabled { opacity: 0.4; }
 .big-btn.live #live-sub { font-weight: 600; color: #cfcfcf; }
 .live-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); }
 #ready-nav { display: flex; justify-content: space-between; margin: 0 -6px; }
-#ready-nav button { padding: 10px 8px; font: 600 16px/1 var(--ui); color: #cfcfcf; }
+#ready-nav button { padding: 10px 6px; font: 600 16px/1 var(--ui); color: #cfcfcf; }
 
 /* running */
 #run {
@@ -257,6 +257,14 @@ button.wide.primary { background: #fff; color: #000; }
 .perm-btn.done { background: transparent; border-color: transparent; color: #fff; }
 .perm-btn.bad { border-color: var(--accent); color: var(--accent); }
 #wl-done { margin-top: 16px; }
+/* pre-race check */
+.chk { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 16px/1.4 var(--ui); color: #d8d8d8; }
+.chk b { color: #fff; }
+.chk-i { flex: none; width: 18px; font: 800 18px/1.3 var(--ui); text-align: center; }
+.chk.ok .chk-i { color: #fff; }
+.chk.bad .chk-i { color: var(--accent); }
+.chk.info .chk-i { color: var(--muted); }
+.chk-time { font: 700 17px/1.3 var(--ui); color: #fff; margin: 2px 0 6px; }
 button.danger { background: #2a0d0d; border-color: #5a1a1a; color: #ff6b6b; }
 .hold, .hold5 { position: relative; overflow: hidden; touch-action: pan-y; }
 .hold::before, .hold5 .fill {
