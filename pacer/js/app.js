@@ -918,25 +918,25 @@ function bindLongPress(el, ms, fn) {
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => el.addEventListener(ev, () => stop(true)));
 }
 
+// A button that acts only after being held still for `ms`. A finger that moves is
+// scrolling the menu, not holding the button: that cancels it (and the menu scrolls).
 function bindHold(btn, ms, fn) {
-  let t0 = 0, raf = 0, active = false;
-  const target = btn;
-  const reset = () => { active = false; cancelAnimationFrame(raf); target.style.setProperty('--p', 0); };
+  let t0 = 0, raf = 0, active = false, sx = 0, sy = 0;
+  const reset = () => { active = false; cancelAnimationFrame(raf); btn.style.setProperty('--p', 0); };
   btn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    active = true; t0 = performance.now();
-    try { btn.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    active = true; t0 = performance.now(); sx = e.clientX; sy = e.clientY;
     armMenuTimer();
     const step = () => {
       if (!active) return;
       const p = (performance.now() - t0) / ms;
-      target.style.setProperty('--p', Math.min(1, p));
+      btn.style.setProperty('--p', Math.min(1, p));
       if (p >= 1) { reset(); fn(); return; }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
   });
-  ['pointerup', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, reset));
+  btn.addEventListener('pointermove', (e) => { if (active && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) reset(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => btn.addEventListener(ev, reset));
   btn.addEventListener('click', (e) => e.preventDefault());
 }
 
@@ -979,12 +979,23 @@ function armMenuTimer() {
 
 function renderRunMenu() {
   const r = S.run;
-  const src = { tap: 'when you tapped START', gun: 'at the gun', chip: 'when you crossed the start line (chip time)', adjusted: 'adjusted by hand' }[r.t0Source] || r.t0Source;
-  $('#menu-summary').textContent = `Clock started at ${fmtTimeOfDay(r.t0, true)}, ${src}. ` +
+  let started;
+  if (r.t0Source === 'adjusted') {
+    // say what the nudges moved it from: your start-line crossing, or else the gun
+    const ref = r.crossing ? ['your start-line crossing', r.crossing] : r.mode === 'live' ? ['the gun', r.gunMs] : null;
+    const diff = ref ? Math.round((r.t0 - ref[1]) / 1000) : null;
+    started = ref
+      ? `Clock started at ${fmtTimeOfDay(r.t0, true)}: ${diff === 0 ? 'same as' : `${Math.abs(diff)} s ${diff < 0 ? 'before' : 'after'}`} ${ref[0]} (${fmtTimeOfDay(ref[1], true)}), moved by hand with “Nudge start”.`
+      : `Clock started at ${fmtTimeOfDay(r.t0, true)}, moved by hand with “Nudge start”.`;
+  } else {
+    const src = { tap: 'when you tapped START', gun: 'at the gun', chip: 'when you crossed the start line (chip time)' }[r.t0Source] || r.t0Source;
+    started = `Clock started at ${fmtTimeOfDay(r.t0, true)}, ${src}.`;
+  }
+  $('#menu-summary').textContent = `${started} ` +
     (r.kind === 'race' ? `Finish target ${fmtClock(S.plan ? S.plan.target : r.target)}.` : '');
   const sync = [];
   if (r.kind === 'race' || r.mode === 'live') {
-    if (r.crossing && Math.abs(r.crossing - r.t0) > 1000) {
+    if (r.crossing && Math.abs(r.crossing - r.t0) >= 500) {
       sync.push(`<button type="button" class="wide hold primary" data-sync="crossing">Hold: start the clock at your start-line crossing (${fmtTimeOfDay(r.crossing, true)})</button>`);
     }
     if (r.t0 !== r.gunMs) sync.push(`<button type="button" class="wide hold" data-sync="gun">Hold: use gun time (${fmtTimeOfDay(r.gunMs, true)})</button>`);

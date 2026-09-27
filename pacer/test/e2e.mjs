@@ -212,6 +212,35 @@ await page.mouse.up();
 await sleep(400);
 if (await page.locator('#sheet-menu').isHidden()) errors.push('menu did not open after a 5 s hold');
 await shot('12-run-menu');
+// scrolling the menu with a finger that starts on "−5 s" must scroll, not nudge the clock
+{
+  const cdp = await context.newCDPSession(page);
+  const before = await page.evaluate(() => ({ t0: window.__pacer.S.run.t0, src: window.__pacer.S.run.t0Source, crossing: window.__pacer.S.run.crossing }));
+  const nb = await page.locator('#sheet-menu [data-nudge="-5"]').boundingBox();
+  const x = nb.x + nb.width / 2, y0 = nb.y + nb.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] });
+  for (let i = 1; i <= 13; i++) { await sleep(100); await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 - i * 12 }] }); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(300);
+  const after = await page.evaluate(() => window.__pacer.S.run.t0);
+  if (after !== before.t0) errors.push(`scrolling the menu nudged the clock by ${(after - before.t0) / 1000} s`);
+  // a deliberate still hold on "+1 s" still works, and the menu says what it moved from
+  await page.evaluate(() => { document.querySelector('#sheet-menu .sheet-body').scrollTop = 0; });
+  const pb = await page.locator('#sheet-menu [data-nudge="1"]').boundingBox();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down(); await sleep(1300); await page.mouse.up();
+  await sleep(300);
+  const nudged = await page.evaluate(() => ({ t0: window.__pacer.S.run.t0, src: window.__pacer.S.run.t0Source, summary: document.querySelector('#menu-summary').textContent }));
+  console.log('nudge +1 s:', ((nudged.t0 - before.t0) / 1000), 's |', nudged.summary);
+  if (nudged.t0 - before.t0 !== 1000 || nudged.src !== 'adjusted' || !/1 s after your start-line crossing/.test(nudged.summary)) errors.push('nudge +1 s');
+  // and back to the start-line crossing
+  const cb = await page.locator('#sheet-menu [data-sync="crossing"]').boundingBox();
+  await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+  await page.mouse.down(); await sleep(1300); await page.mouse.up();
+  await sleep(300);
+  const back = await page.evaluate(() => ({ t0: window.__pacer.S.run.t0, src: window.__pacer.S.run.t0Source }));
+  if (back.src !== 'chip' || back.t0 !== before.crossing) errors.push('back to the crossing');
+}
 // pocket mode from the menu: black screen, the loop keeps running
 await page.click('#menu-pocket [data-pocket="1"]');
 await sleep(800);

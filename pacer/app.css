@@ -250,7 +250,7 @@ button.wide {
 }
 button.wide.primary { background: #fff; color: #000; }
 button.danger { background: #2a0d0d; border-color: #5a1a1a; color: #ff6b6b; }
-.hold, .hold5 { position: relative; overflow: hidden; touch-action: none; }
+.hold, .hold5 { position: relative; overflow: hidden; touch-action: pan-y; }
 .hold::before, .hold5 .fill {
   content: ""; position: absolute; left: 0; top: 0; bottom: 0;
   width: calc(var(--p, 0) * 100%); background: rgba(255, 255, 255, 0.28); pointer-events: none;
