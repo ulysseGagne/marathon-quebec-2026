@@ -66,17 +66,21 @@ function icon(w, h, draw) {
   return g.getImageData(0, 0, c.width, c.height);
 }
 
-// Where you planned to eat a bar: a small black label, white outline and text
-// (BAR, or CAF for a caffeinated one).
+// Where a bar is announced: a small black label, white outline and text (CAF for a
+// caffeinated one, DECAF for the others).
 function barPill(text) {
-  return icon(38, 19, (g) => {
-    roundRect(g, 1, 1, 36, 17, 5);
+  const font = '800 11px -apple-system, system-ui, sans-serif';
+  const m = document.createElement('canvas').getContext('2d');
+  m.font = font;
+  const w = Math.max(38, Math.ceil(m.measureText(text).width) + 16);
+  return icon(w, 19, (g) => {
+    roundRect(g, 1, 1, w - 2, 17, 5);
     g.fillStyle = '#000000'; g.fill();
     g.lineWidth = 1.5; g.strokeStyle = '#FFFFFF'; g.stroke();
     g.fillStyle = '#FFFFFF';
-    g.font = '800 11px -apple-system, system-ui, sans-serif';
+    g.font = font;
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(text, 19, 10);
+    g.fillText(text, w / 2, 10);
   });
 }
 
@@ -219,7 +223,7 @@ export class MapView {
     m.addSource('course', { type: 'geojson', data: empty, lineMetrics: true });
     m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
     for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
-    try { m.addImage('bar-pill', barPill('BAR'), { pixelRatio: 2 }); m.addImage('caf-pill', barPill('CAF'), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
+    try { m.addImage('decaf-pill', barPill('DECAF'), { pixelRatio: 2 }); m.addImage('caf-pill', barPill('CAF'), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
     try { m.addImage('aid-drop', aidDrop(), { pixelRatio: 2 }); } catch (e) { console.warn('aid icon', e); }
     const round = { 'line-cap': 'round', 'line-join': 'round' };
     // free run: your own trail, bright from the ghost to you
@@ -281,10 +285,12 @@ export class MapView {
     m.addLayer({
       id: 'bars', type: 'symbol', source: 'bars', minzoom: 9,
       layout: {
-        'icon-image': ['case', ['get', 'caf'], 'caf-pill', 'bar-pill'],
+        'icon-image': ['case', ['get', 'caf'], 'caf-pill', 'decaf-pill'],
         'icon-allow-overlap': true, 'icon-ignore-placement': false, // labels keep clear of it
         'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 13, 0.8, 16, 1, 18, 1.2],
         'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
+        // the bar before the start sits just below the start line, leaving START room above
+        'icon-offset': ['case', ['get', 'pre'], ['literal', [0, 17]], ['literal', [0, 0]]],
       },
     });
   }
@@ -384,12 +390,17 @@ export class MapView {
     for (const id of ['course', 'course-tunnel', 'km', 'aid', 'bars', 'ends']) this.map.getSource(id).setData(fc([]));
   }
 
-  // Bars you planned to eat ([{km, caf}]), at official km on this course.
-  setBars(course, bars) {
+  // Bars you planned to eat ([{km, caf}]), at official km on this course, and the one
+  // before the start (pre: 'caf', 'bar' or 'none') at the start line.
+  setBars(course, bars, pre = 'none') {
     const feats = (bars || []).filter((b) => b.km * 1000 < course.total).map((b) => {
       const [la, lo] = course.line.latLonAt(b.km * 1000);
       return pointFeature(lo, la, { km: b.km, caf: !!b.caf });
     });
+    if (pre && pre !== 'none') {
+      const [la, lo] = course.line.latLonAt(0);
+      feats.push(pointFeature(lo, la, { km: 0, caf: pre === 'caf', pre: true }));
+    }
     this.map.getSource('bars').setData(fc(feats));
   }
 

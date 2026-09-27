@@ -86,16 +86,20 @@ export class Course {
     return ele[i] + (ele[i + 1] - ele[i]) * (f - i);
   }
 
-  // What a spot is like to eat a bar: slope over the stretch you eat on (-200 m to +400 m),
-  // tunnel, the next aid station ahead (water) and the street.
+  // What a spot is like to eat a bar announced at d: slope over the 500 m you eat on
+  // (about 2 min), a tunnel on it, the street, and the next aid station ahead (water),
+  // which should be 1 km on. Uphill is hard to chew on; a gentle downhill is fine (easy
+  // breathing), a steep one less so (footing).
   spotAt(d) {
-    const a = Math.max(0, d - 200), b = Math.min(this.total, d + 400);
+    const a = Math.max(0, d), b = Math.min(this.total, d + 500);
     const grade = b > a ? ((this.elevationAt(b) - this.elevationAt(a)) / (b - a)) * 100 : 0;
-    const water = this.aid.find((x) => x.d >= d && x.d - d <= 700) || null;
+    const tunnel = this.tunnels.some(([x, y]) => y >= a && x <= b);
+    const water = this.aid.find((x) => x.d > d) || null;
     return {
-      grade, tunnel: this.inTunnel(d, 60), street: this.streetAt(d),
-      water: water ? { km: water.km, m: Math.round(water.d - d) } : null,
-      terrain: this.inTunnel(d, 60) ? 'in the tunnel' : grade > 1.5 ? 'uphill' : grade < -2.5 ? 'downhill' : 'flat',
+      grade, tunnel, street: this.streetAt(d),
+      water: water ? { km: water.km, m: Math.round(water.d - d), what: water.what } : null,
+      terrain: tunnel ? 'in the tunnel' : grade > 1.5 ? 'uphill' : grade < -4 ? 'steep downhill'
+        : grade < -1.5 ? 'gentle downhill' : 'flat',
     };
   }
 

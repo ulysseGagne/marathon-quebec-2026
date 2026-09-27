@@ -68,6 +68,10 @@ await page.goto('http://localhost:8765/pacer/');
 await page.waitForSelector('#app.phase-ready', { timeout: 60000 });
 await sleep(4000);
 await shot('01-ready');
+// at the start line: START and the bar before the start both show
+const atStart = await page.evaluate(() => window.__pacer.S.map.map.queryRenderedFeatures({ layers: ['ends', 'bars'] }).map((f) => f.properties.label || (f.properties.pre ? 'pre-start bar' : 'bar')));
+console.log('at the start line:', JSON.stringify(atStart));
+if (!atStart.includes('START') || !atStart.includes('pre-start bar')) errors.push('START label or pre-start bar hidden');
 
 // every recorded voice clip decodes
 const clipCheck = await page.evaluate(async () => {
@@ -90,9 +94,17 @@ if (clipCheck.bad.length || clipCheck.n < 200) errors.push(`voice clips failed: 
 // bars: the default plan shows on the map
 await page.evaluate(() => { window.__pacer.S.follow = false; window.__pacer.S.map.overview(); });
 await sleep(1500);
-const barsShown = await page.evaluate(() => window.__pacer.S.map.map.queryRenderedFeatures({ layers: ['bars'] }).length);
-console.log('bar markers on the overview:', barsShown);
-if (barsShown < 3) errors.push('bar markers missing');
+const barsShown = await page.evaluate(() => {
+  const m = window.__pacer.S.map.map;
+  const f = m.queryRenderedFeatures({ layers: ['bars'] });
+  return { n: f.length, pre: f.filter((x) => x.properties.pre).length, caf: f.filter((x) => x.properties.caf).length, images: ['caf-pill', 'decaf-pill'].every((id) => m.hasImage(id)) };
+});
+console.log('bar markers on the overview:', JSON.stringify(barsShown));
+if (barsShown.n !== 5 || barsShown.pre !== 1 || barsShown.caf !== 3 || !barsShown.images) errors.push('bar markers missing');
+// the bar before the start, on the start screen
+const preTxt = await page.evaluate(() => { const e = document.querySelector('#rt-fuel'); return e.hidden ? null : e.textContent; });
+console.log('start screen reminder:', preTxt);
+if (!/^CAF bar at 7:20/.test(preTxt || '')) errors.push('pre-start bar reminder');
 await page.evaluate(() => { window.__pacer.S.follow = true; window.__pacer.S.overviewShown = false; });
 
 await page.click('[data-open="settings"]');
@@ -106,6 +118,14 @@ await sleep(300);
 const barsSet = await page.evaluate(() => window.__pacer.S.settings.bars);
 console.log('bars typed:', JSON.stringify(barsSet), '|', await page.textContent('#set-bars-note'));
 if (JSON.stringify(barsSet) !== '[{"km":8.1,"caf":false},{"km":15,"caf":true},{"km":24.4,"caf":false},{"km":33,"caf":false}]') errors.push('bars input');
+const planTxt = await page.textContent('#set-bars-list');
+if (!/water at 8\.4 is only 300 m on: make it 7\.4/.test(planTxt)) errors.push('fuel plan: 1 km check');
+// back to the suggested plan
+await page.click('#set-bars-suggest');
+await sleep(200);
+const barsBack = await page.evaluate(() => ({ bars: window.__pacer.S.settings.bars, list: document.querySelector('#set-bars-list').textContent }));
+console.log('suggested plan:', barsBack.list);
+if (JSON.stringify(barsBack.bars.map((b) => b.km)) !== '[4.8,10.1,21.9,31.9]' || /make it|close to|uphill|tunnel|no aid/.test(barsBack.list)) errors.push('suggested fuel plan');
 // the wind forecast, on demand
 await page.click('#set-wind-fc');
 await sleep(800);
@@ -175,6 +195,10 @@ await page.evaluate(() => {
   window.__how = [];
   v.log = (t, how) => window.__how.push(how);
   v.say = (t, o) => { window.__spoken.push(t); say(t, o); };
+  // every text the status line shows
+  window.__status = new Set();
+  const st = document.querySelector('#status-line');
+  new MutationObserver(() => window.__status.add(st.textContent)).observe(st, { childList: true, characterData: true, subtree: true });
 });
 const theme = (t) => page.evaluate((name) => {
   const b = document.querySelector(`#set-theme [data-theme="${name}"]`) || null;
@@ -281,9 +305,15 @@ if (gapsSaid.some((g) => g < 10) && !spoken.some((t) => /unlock|paused/.test(t))
   const small = spoken.filter((t) => /(\d+) seconds? (behind|ahead)/.test(t) && Number(/(\d+)/.exec(t)[1]) < 10);
   if (small.length > 1) errors.push(`off-pace voice spoke inside 10 s: ${small.join(' | ')}`);
 }
-if (spoken.filter((t) => /Time for a (caffeine )?bar/.test(t)).length !== 4) errors.push('bar cues');
-if (!spoken.some((t) => /Time for a caffeine bar/.test(t))) errors.push('caffeine bar cue');
-if (spoken.filter((t) => /Gel at the next station/.test(t)).length !== 2) errors.push('gel cues');
+// bars 1 km before water, every aid station 250 m before it
+const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
+console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'DECAF', nSaid(/Take decaffeinated bar/), 'water', nSaid(/Water in 250 meters/), 'gel', nSaid(/Gel in 250 meters/));
+if (nSaid(/Take caffeinated bar/) !== 2 || nSaid(/Take decaffeinated bar/) !== 2) errors.push('bar calls');
+if (nSaid(/Water in 250 meters/) !== 13 || nSaid(/Gel in 250 meters/) !== 2) errors.push('water calls');
+const statuses = await page.evaluate(() => [...window.__status]);
+for (const re of [/^DECAF bar in \d+ m$/, /^CAF bar now$/, /^Water in \d+ m$/, /^Gel in \d+ m$/, /^Water: now$/]) {
+  if (!statuses.some((t) => re.test(t))) errors.push(`status line never showed ${re}`);
+}
 if (how.filter((h) => h === 'clips').length < 5) errors.push('recorded clips not used');
 const finRow = await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish));
 if (!(JSON.parse(finRow).elapsed < 10800)) errors.push('demo race did not finish under 3:00');

@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="format-detection" content="telephone=no">
 <title>Virtual Pacer</title>
-<meta name="description" content="Virtual pacer for the 2026 Marathon Beneva de Québec: one big number, seconds behind (+) or ahead (−) of a perfect even-effort run.">
+<meta name="description" content="Virtual pacer for the 2026 Marathon Beneva de Québec: one big number, seconds ahead (+) or behind (−) of a perfect even-effort run.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -40,6 +40,7 @@
       <div id="ready-title">
         <div class="rt-name" id="rt-name">Marathon Beneva de Québec</div>
         <div class="rt-sub" id="rt-sub">Target 2:59:30 · even effort</div>
+        <div class="rt-fuel" id="rt-fuel" hidden></div>
       </div>
       <button id="btn-start" class="big-btn go" type="button">START</button>
       <button id="btn-live" class="big-btn live" type="button"><span class="live-dot"></span>LIVE <span id="live-sub">· gun 8:00:00</span></button>
@@ -150,8 +151,8 @@
       <div class="set-block">
         <div class="set-title">Fuel · bars and gels</div>
         <div id="set-bars-list"></div>
-        <div class="set-title sub">Bars on the course · official km (c = caffeine)</div>
-        <input id="set-bars" class="text-in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="8.1, 22.6c, 32.6c" aria-label="Kilometres where you eat a bar, c for a caffeinated one">
+        <div class="set-title sub">Bars on the course · official km (c = CAF)</div>
+        <input id="set-bars" class="text-in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="4.8, 10.1, 21.9c, 31.9c" aria-label="Kilometres where each bar is announced, c for a caffeinated one">
         <div class="set-title sub">Before the start · and the race's gels</div>
         <div id="set-fuel-opts"></div>
         <button type="button" class="wide" id="set-bars-suggest" hidden>Use the suggested plan</button>

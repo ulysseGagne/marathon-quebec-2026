@@ -128,7 +128,7 @@ function useCourse(course, plan, { keepTracker = false } = {}) {
   if (S.mapReady) {
     if (course) {
       S.map.setCourse(course);
-      S.map.setBars(course, course.id === 'marathon' ? S.settings.bars : []);
+      if (course.id === 'marathon') showBars(); else S.map.setBars(course, []);
     } else S.map.clearCourse();
   }
   S.overviewShown = false;
@@ -158,7 +158,7 @@ function setupRunObjects() {
   S.alert = { level: 0 };
   S.alertAt = 0;
   S.lastBar = null;
-  S.lastGel = null;
+  S.lastWater = null;
   S.goSaid = false;
   S.resume = null;
   S.peekUntil = 0;
@@ -445,11 +445,12 @@ function runningFrame(now, dt) {
     S.goSaid = true;
     if (el < 5) S.voice.say('Go!', { force: true, clips: ['go'] });
   }
-  // what to say this frame: a bar, the gap every N metres
+  // what to say this frame: a bar, the next aid station, the gap every N metres
   const words = [], clips = [];
   const bar = barDue(d, el);
-  if (bar) { words.push(bar.caf ? 'Time for a caffeine bar.' : 'Time for a bar.'); clips.push(bar.caf ? 'bar_caf' : 'bar'); }
-  if (gelDue(d, el)) { words.push('Gel at the next station.'); clips.push('gel'); }
+  if (bar) { words.push(bar.caf ? 'Take caffeinated bar.' : 'Take decaffeinated bar.'); clips.push(bar.caf ? 'take_caf' : 'take_decaf'); }
+  const aid = waterDue(d, el);
+  if (aid) { const gel = isGel(aid); words.push(gel ? 'Gel in 250 meters.' : 'Water in 250 meters.'); clips.push(gel ? 'gel250' : 'water250'); }
   const every = voiceEvery();
   if (every && d !== null && el > 0) {
     const k = Math.floor(d / every);
@@ -520,16 +521,21 @@ function catchUp(now, raw, est) {
   }
 }
 
-// Fuel on the marathon: your bars (Settings) and the race's gels. Passing a bar says
-// "Time for a bar" (or "a caffeine bar"); 300 m before a gel station, "Gel at the next
-// station".
+// Fuel and water on the marathon. Each bar is announced where you planned it, 1 km before
+// an aid station: "Take caffeinated bar" or "Take decaffeinated bar" (about 2 min to eat
+// it, 2 more to get ready). Every aid station is announced 250 m before it: "Water in 250
+// meters", or "Gel in 250 meters" at the two gel stations.
+const WATER_CALL = 250;
+
 function barList() {
   return S.course && S.course.id === 'marathon' ? (S.settings.bars || []) : [];
 }
 
-function gelList() {
-  return S.course && S.course.id === 'marathon' && S.settings.raceGels !== false ? S.course.aid.filter((a) => a.what === 'gels') : [];
+function aidList() {
+  return S.course && S.course.id === 'marathon' ? S.course.aid : [];
 }
+
+function isGel(a) { return a.what === 'gels' && S.settings.raceGels !== false; }
 
 function barDue(d, el) {
   const bars = barList();
@@ -540,25 +546,30 @@ function barDue(d, el) {
   return null;
 }
 
-function gelDue(d, el) {
-  const gels = gelList();
-  if (!gels.length || d === null || el <= 0) return false;
-  const passed = gels.filter((g) => d >= g.d - 300).length;
-  if (S.lastGel === null || S.lastGel === undefined) { S.lastGel = passed; return false; }
-  if (passed > S.lastGel) { S.lastGel = passed; return true; }
-  return false;
+// the aid station you just came within 250 m of (once each)
+function waterDue(d, el) {
+  const aid = aidList();
+  if (!aid.length || d === null || el <= 0) return null;
+  const passed = aid.filter((a) => d >= a.d - WATER_CALL).length;
+  if (S.lastWater === null) { S.lastWater = passed; return null; }
+  if (passed > S.lastWater) { S.lastWater = passed; return aid[passed - 1]; }
+  return null;
 }
 
-// "Bar in 240 m" (or "Caffeine bar", "Gel station") on the status line when one is coming
-// up, "Bar: now" just after.
-function barStatus(d) {
+// Status line: "DECAF bar in 240 m", "DECAF bar now" while you eat it, "Water in 180 m"
+// (or "Gel in 180 m") before each aid station, "Water: now" at it.
+function fuelStatus(d) {
   if (d === null) return '';
-  const items = barList().map((b) => ({ d: b.km * 1000, name: b.caf ? 'Caffeine bar' : 'Bar' }))
-    .concat(gelList().map((g) => ({ d: g.d, name: 'Gel station' })));
-  for (const it of items) {
-    const to = it.d - d;
-    if (to > 0 && to <= 300) return `${it.name} in ${Math.max(10, Math.round(to / 10) * 10)} m`;
-    if (to <= 0 && to > -150) return `${it.name}: now`;
+  const m = (x) => `${Math.max(10, Math.round(x / 10) * 10)} m`;
+  for (const b of barList()) {
+    const to = b.km * 1000 - d, name = b.caf ? 'CAF bar' : 'DECAF bar';
+    if (to > 0 && to <= 300) return `${name} in ${m(to)}`;
+    if (to <= 0 && to > -450) return `${name} now`;
+  }
+  for (const a of aidList()) {
+    const to = a.d - d, name = isGel(a) ? 'Gel' : 'Water';
+    if (to > 0 && to <= WATER_CALL) return `${name} in ${m(to)}`;
+    if (to <= 0 && to > -80) return `${name}: now`;
   }
   return '';
 }
@@ -664,7 +675,7 @@ function renderRunPanel(now, el, d, est, estimating) {
     status = `Start line crossed ${Math.abs(diff).toFixed(0)} s ${diff > 0 ? 'after' : 'before'} START · hold ••• to fix`;
   } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · ${r.rehearsal ? 'wait for “Go!”' : 'stay in the corral'}`;
   else if (r.mode === 'live' && r.t0Source === 'gun' && el >= 0 && el < 600 && d !== null && d < 0) status = `Start line in ${Math.round(-d)} m · then chip time`;
-  else if (barStatus(d)) status = barStatus(d);
+  else if (fuelStatus(d)) status = fuelStatus(d);
   else if (S.fix && S.fix.acc > 25) status = `Weak GPS ±${Math.round(S.fix.acc)} m`;
   else if (S.needWakeTap) status = 'Tap the screen once to keep it awake';
   const full = cls + (estimating ? ' est' : '');
@@ -779,6 +790,7 @@ function renderReady() {
   let sub = `Target ${fmtClock(s.target)} · even effort`;
   if (s.wind.kmh > 0) sub += ` · wind ${dirName(s.wind.fromDeg)} ${s.wind.kmh}`;
   $('#rt-sub').textContent = sub;
+  S.lastPanel.preBar = null;
   renderReadyLive(clock.now());
 }
 
@@ -789,6 +801,15 @@ function renderReadyLive(now) {
   else if (now >= g && now - g < 7 * 3600e3) sub = `· since ${fmtTimeOfDay(g, true)}`;
   else sub = `· gun ${fmtTimeOfDay(g, true)}`;
   if (S.lastPanel.liveSub !== sub) { $('#live-sub').textContent = sub; S.lastPanel.liveSub = sub; }
+  // the bar before the start, until the gun
+  const pre = S.settings.preBar || 'caf';
+  const fuel = pre !== 'none' && now < g ? `${pillHtml(pre === 'caf')} bar at ${fmtTimeOfDay(g - 40 * 60000)}, before the gun` : '';
+  if (S.lastPanel.preBar !== fuel) {
+    const el = $('#rt-fuel');
+    el.innerHTML = fuel;
+    el.hidden = !fuel;
+    S.lastPanel.preBar = fuel;
+  }
 }
 
 function renderChips() {
@@ -1156,7 +1177,7 @@ function bindSettings() {
     S.settings.bars = parseBars(e.target.value, S.marathon.total / 1000);
     saveSettings(S.settings);
     renderSettings();
-    if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
+    showBars();
   });
   $('#set-bars').addEventListener('blur', () => renderSettings());
   $('#set-bars-suggest').addEventListener('click', () => {
@@ -1165,7 +1186,8 @@ function bindSettings() {
     S.settings.raceGels = true;
     saveSettings(S.settings);
     renderSettings();
-    if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
+    renderReady();
+    showBars();
   });
   $('#set-fuel-opts').addEventListener('click', (e) => {
     const b = e.target.closest('[data-pre],[data-gels]'); if (!b) return;
@@ -1173,6 +1195,8 @@ function bindSettings() {
     if (b.dataset.gels) S.settings.raceGels = b.dataset.gels === '1';
     saveSettings(S.settings);
     renderSettings();
+    renderReady();
+    showBars();
   });
   $('#set-theme').addEventListener('click', (e) => {
     const b = e.target.closest('[data-theme]'); if (!b) return;
@@ -1187,15 +1211,18 @@ function bindSettings() {
   $('#btn-sim').addEventListener('click', () => startSim(20));
 }
 
-// ---- fuel plan: the bar before the start, your bars and the race's gels, in order
+// ---- fuel plan: the bar before the start, your bars and the race's gels, in order. Each
+// bar is checked: 1 km before an aid station, not uphill, not a steep downhill, no tunnel.
 function fuelPlanHtml(s) {
   const plan = S.readyPlan, c = S.marathon;
-  const items = (s.bars || []).map((b) => ({ d: b.km * 1000, kind: b.caf ? 'caffeine bar' : 'bar', bar: true, caf: b.caf }))
-    .concat(s.raceGels !== false ? c.aid.filter((a) => a.what === 'gels').map((a) => ({ d: a.d, kind: 'race gel', gel: true })) : [])
+  const pre = s.preBar || 'caf';
+  const gels = s.raceGels !== false ? c.aid.filter((a) => a.what === 'gels') : [];
+  const items = (s.bars || []).map((b) => ({ d: b.km * 1000, bar: true, caf: b.caf }))
+    .concat(gels.map((a) => ({ d: a.d, gel: true })))
     .sort((a, b) => a.d - b.d);
   const rows = [];
-  if ((s.preBar || 'caf') !== 'none') {
-    rows.push(`<div class="bar-row"><b>before the start</b> ${fmtTimeOfDay(gunMs() - 40 * 60000)} · ${s.preBar === 'bar' ? 'bar' : 'caffeine bar'}, 30–45 min before the gun</div>`);
+  if (pre !== 'none') {
+    rows.push(`<div class="bar-row"><b>before the start</b> ${fmtTimeOfDay(gunMs() - 40 * 60000)} · ${pillHtml(pre === 'caf')} bar, 30–45 min before the gun</div>`);
   }
   let prevT = null;
   for (const it of items) {
@@ -1206,20 +1233,39 @@ function fuelPlanHtml(s) {
     let bad = false;
     if (it.bar) {
       const sp = c.spotAt(it.d);
-      bad = sp.terrain !== 'flat' || !sp.water;
-      what = ` · ${sp.terrain === 'flat' ? 'flat' : `<b class="warn">${sp.terrain}${sp.tunnel ? '' : ` ${sp.grade > 0 ? '+' : ''}${sp.grade.toFixed(1)} %`}</b>`}` +
-        `${sp.street ? `, ${escapeHtml(sp.street)}` : ''} · ${sp.water ? `water at ${sp.water.km}` : '<b class="warn">no water within 700 m</b>'}`;
+      const w = sp.water;
+      const onCue = w && Math.abs(w.m - 1000) <= 100;
+      const hard = sp.terrain === 'uphill' || sp.terrain === 'steep downhill' || sp.terrain === 'in the tunnel';
+      bad = hard || !onCue;
+      const terrain = sp.terrain === 'flat' || sp.tunnel ? sp.terrain : `${sp.terrain} ${sp.grade > 0 ? '+' : '−'}${Math.abs(sp.grade).toFixed(1)} %`;
+      what = ` · ${hard ? `<b class="warn">${terrain}</b>` : terrain}${sp.street ? `, ${escapeHtml(sp.street)}` : ''} · ` +
+        (!w ? '<b class="warn">no aid station after it</b>'
+          : onCue ? `water at ${w.km}, 1 km on`
+            : `<b class="warn">water at ${w.km} is ${w.m < 1000 ? 'only ' : ''}${fmtDist(w.m)} on: make it ${(w.km - 1).toFixed(1)}</b>`);
     }
     const km = it.gel ? String(it.d / 1000) : (it.d / 1000).toFixed(1);
     const close = gap !== null && gap < 12 ? ' <b class="warn">close to the one before</b>' : '';
-    rows.push(`<div class="bar-row${bad ? ' bad' : ''}${it.gel ? ' gel' : ''}"><b>km ${km}</b> ${fmtClock(t).slice(0, 4)}${gap !== null ? ` (+${gap} min)` : ''} · ${it.kind}${close}${what}</div>`);
+    const name = it.gel ? 'race gel' : `${pillHtml(it.caf)} bar`;
+    rows.push(`<div class="bar-row${bad ? ' bad' : ''}${it.gel ? ' gel' : ''}"><b>km ${km}</b> ${fmtClock(t).slice(0, 4)}${gap !== null ? ` (+${gap} min)` : ''} · ${name}${close}${what}</div>`);
   }
-  const nBars = (s.bars || []).length + ((s.preBar || 'caf') !== 'none' ? 1 : 0);
-  const nCaf = (s.bars || []).filter((b) => b.caf).length + ((s.preBar || 'caf') === 'caf' ? 1 : 0);
-  const nGels = s.raceGels !== false ? c.aid.filter((a) => a.what === 'gels').length : 0;
-  rows.push(`<div class="bar-row total">${nBars} bars × 25 g${nGels ? ` + ${nGels} race gels × ~30 g` : ''} ≈ ${nBars * 25 + nGels * 30} g of carbs · caffeine ${nCaf * 50} mg (${nCaf} × 50 mg)${nGels ? ' + the gels’ if they have some' : ''}</div>`);
+  const onCourse = (s.bars || []).length;
+  const nBars = onCourse + (pre !== 'none' ? 1 : 0);
+  const nCaf = (s.bars || []).filter((b) => b.caf).length + (pre === 'caf' ? 1 : 0);
+  const grams = (onCourse + gels.length) * 25;
+  const perHour = Math.round(grams / (plan.timeAt(c.total) / 3600));
+  rows.push(`<div class="bar-row total">In the race: ${onCourse} bar${onCourse === 1 ? '' : 's'}${gels.length ? ` + ${gels.length} gels` : ''} × ~25 g ≈ ${grams} g of carbs, ${perHour} g/h${pre !== 'none' ? ', plus 25 g before the start' : ''}. ` +
+    `Caffeine ${nCaf * 50} mg (${nCaf} CAF × 50 mg). ${nBars} bar${nBars === 1 ? '' : 's'} in all: ${nCaf} CAF, ${nBars - nCaf} DECAF.</div>`);
   return rows.join('');
 }
+
+// your bars on the map, and the one before the start at the start line
+function showBars() {
+  if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars, S.settings.preBar || 'caf');
+}
+
+function pillHtml(caf) { return `<span class="pill">${caf ? 'CAF' : 'DECAF'}</span>`; }
+
+function fmtDist(m) { return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`; }
 
 // ---- wind forecast (optional: needs a connection, asked once)
 function raceDay() {
@@ -1311,16 +1357,16 @@ function renderSettings() {
   if (document.activeElement !== barsEl) barsEl.value = fmtBars(bars);
   $('#set-bars-list').innerHTML = fuelPlanHtml(s);
   $('#set-fuel-opts').innerHTML =
-    `<div class="seg compact">${[['caf', 'Caffeine bar'], ['bar', 'Regular bar'], ['none', 'Nothing']].map(([k, t]) => `<button type="button" data-pre="${k}" class="${(s.preBar || 'caf') === k ? 'on' : ''}">${t}</button>`).join('')}</div>` +
+    `<div class="seg compact">${[['caf', 'CAF bar'], ['bar', 'DECAF bar'], ['none', 'Nothing']].map(([k, t]) => `<button type="button" data-pre="${k}" class="${(s.preBar || 'caf') === k ? 'on' : ''}">${t}</button>`).join('')}</div>` +
     `<div class="seg compact stack">${[['1', 'Take the race gels'], ['0', 'Skip them']].map(([k, t]) => `<button type="button" data-gels="${k}" class="${(s.raceGels !== false) === (k === '1') ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   const gels = S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ');
-  $('#set-bars-note').textContent = `Type the km of your bars on the course; add “c” for a caffeinated one (22.6c). The app shows them on the map (BAR, CAF), counts down the last 300 m under the number, and the voice says “Time for a bar”, “Time for a caffeine bar”, or “Gel at the next station” 300 m before the gel stations (km ${gels}). Spots are checked for slope, water and the tunnel.`;
+  $('#set-bars-note').textContent = `Type the km where each bar is announced, 1 km before an aid station; add “c” for a caffeinated one (21.9c). The map shows them (CAF, DECAF) and the voice says “Take caffeinated bar” or “Take decaffeinated bar” there: about 2 min to eat it, 2 to get ready. Every aid station is announced 250 m before it: “Water in 250 meters”, or “Gel in 250 meters” at km ${gels}. Spots are checked for slope, the tunnels and the station 1 km on.`;
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also “time for a bar” at your bars.'
+    ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).'
     : vm === 'every'
-      ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also “time for a bar”.`
+      ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';
   $('#set-theme').innerHTML = themeButtons();
   $('#set-theme-note').textContent = THEME_NOTES[s.theme];
@@ -1423,7 +1469,7 @@ function renderPlan() {
     const up = c.elevationAt(b) - c.elevationAt(a);
     const notes = [];
     for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`aid ${aid.km}${aid.what ? ` ${aid.what}` : ''}`);
-    for (const bar of S.settings.bars || []) if (bar.km * 1000 > a && bar.km * 1000 <= b) notes.push(`${bar.caf ? 'caffeine bar' : 'bar'} ${bar.km.toFixed(1)}`);
+    for (const bar of S.settings.bars || []) if (bar.km * 1000 > a && bar.km * 1000 <= b) notes.push(`${bar.caf ? 'CAF' : 'DECAF'} bar ${bar.km.toFixed(1)}`);
     for (const [ta, tb] of c.tunnels) if (tb - ta > 300 && ta < b && tb > a) notes.push('tunnel');
     const cls = per > flat + 12 ? 'climb' : per < flat - 8 ? 'down' : '';
     rows.push(`<tr class="${cls}"><td>${b === c.total ? '42.2' : k}</td><td class="pace">${fmtPace(split)}</td>` +

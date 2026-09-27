@@ -7,6 +7,8 @@ audio exclusively and stops the music). Voice: Piper en_US-joe-medium (CC0), off
     pip install piper-tts joe-us-piper-voice lameenc numpy
     python3 pacer/tools/build_voice.py          # only clips that are missing
     python3 pacer/tools/build_voice.py --all    # everything again (synthesis varies a bit)
+
+Clips no longer in phrases() are deleted.
 """
 import io
 import json
@@ -34,7 +36,6 @@ def phrases():
         p[f'm{n}'] = f'{n} minute' if n == 1 else f'{n} minutes'
     p['behind'] = 'behind.'
     p['ahead'] = 'ahead.'
-    p['bar'] = 'Time for a bar.'
     p['go'] = 'Go!'
     p['go_run'] = 'Go. Pacer running.'
     p['live_wait'] = 'Live mode. Waiting for the gun.'
@@ -47,8 +48,10 @@ def phrases():
     p['every1000'] = 'Every kilometer.'
     p['every2000'] = 'Every 2 kilometers.'
     p['offpace'] = 'Only when off pace.'
-    p['bar_caf'] = 'Time for a caffeine bar.'
-    p['gel'] = 'Gel at the next station.'
+    p['take_caf'] = 'Take caffeinated bar.'
+    p['take_decaf'] = 'Take decaffeinated bar.'
+    p['water250'] = 'Water in 250 meters.'
+    p['gel250'] = 'Gel in 250 meters.'
     return p
 
 
@@ -100,7 +103,14 @@ def main():
     except FileNotFoundError:
         index = {}
     total = 0
-    for key, text in phrases().items():
+    wanted = phrases()
+    for key in [k for k in index if k not in wanted]:
+        del index[key]
+        try:
+            os.remove(os.path.join(OUT, f'{key}.mp3'))
+        except FileNotFoundError:
+            pass
+    for key, text in wanted.items():
         path = os.path.join(OUT, f'{key}.mp3')
         if not everything and key in index and os.path.exists(path):
             continue

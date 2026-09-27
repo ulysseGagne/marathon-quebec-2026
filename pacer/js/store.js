@@ -5,20 +5,30 @@ const KEY_SETTINGS = 'pacer.settings.v1';
 const KEY_RUN = 'pacer.run.v1';
 const TRACK_PREFIX = 'pacer.track.';
 
-// The fuel plan. One bar before the start; on the course the three others fit around the
-// race's two gel stations: bar, gel (15.1), bar, gel (27), bar, a fuel stop every 18-32
-// min. Each bar on flat ground, 300 m before water, none in the tunnel or on the km 10.7-16
-// climb. An XACT Energy bar is 25 g of carbs; the Performance ones add 50 mg of caffeine:
-// before the start, and for the second half (it peaks 45-60 min after eating it).
-//   before the start (~7:20)  caffeine bar
-//   8.1   0:34  bar           flat riverside, water at 8.4
-//   15.1  1:04  race gel
-//   22.6  1:36  caffeine bar  Route Verte, flat, water at 22.9: peaks for km 30-38
-//   27    1:54  race gel
-//   32.6  2:19  caffeine bar  Boulevard Champlain, flat, water at 32.9: the last 10 km
-export const SUGGESTED_BARS = [{ km: 8.1, caf: false }, { km: 22.6, caf: true }, { km: 32.6, caf: true }];
+// The fuel plan: one bar before the start, four on the course around the race's two gel
+// stations, a fuel stop every 21-29 min from km 4.8 to km 31.9 (nothing after 2:16: food
+// that late has little time left to help). Each bar is announced exactly 1 km before a
+// water station (about 2 min to eat it, 2 to get ready, then "Water in 250 meters"), on
+// ground that is flat or gently downhill and outside the tunnels. XACT bars are 25 g of
+// carbs; the Performance ones (CAF) add 50 mg of caffeine: one before the start (it peaks
+// 45-60 min after), two for the second half. The race gels count as ~25 g each.
+//   before the start (~7:20)  CAF
+//   4.8   0:20  DECAF   Limoilou, water at 5.8
+//   10.1  0:42  DECAF   Saint-Charles river, flat, water at 11.1
+//   15.1  1:05  race gel
+//   21.9  1:34  CAF     gentle downhill (-3.9 %), water at 22.9: kicks in for km 30-42
+//   27    1:55  race gel
+//   31.9  2:16  CAF     Boulevard Champlain, flat, water at 32.9: the last 10 km
+// In the race: 4 bars + 2 gels = ~150 g, ~50 g/h; caffeine 150 mg. The sixth bar (DECAF)
+// is a spare.
+export const SUGGESTED_BARS = [
+  { km: 4.8, caf: false }, { km: 10.1, caf: false }, { km: 21.9, caf: true }, { km: 31.9, caf: true },
+];
 // earlier suggestions nobody edited move to the new plan
-const OLD_SUGGESTIONS = ['[8.1,14.8,24.4,32.6]', '[8.1,19,26.7,32.6]'];
+const OLD_SUGGESTIONS = [
+  '[8.1,14.8,24.4,32.6]', '[8.1,19,26.7,32.6]',
+  '[{"km":8.1,"caf":false},{"km":22.6,"caf":true},{"km":32.6,"caf":true}]',
+];
 
 export const DEFAULT_SETTINGS = {
   target: 2 * 3600 + 59 * 60 + 30, // race finish target (s)
@@ -27,9 +37,9 @@ export const DEFAULT_SETTINGS = {
   voiceMode: 'offpace',             // 'offpace' (only when 10 s+ off), 'every' (voiceEvery), 'off'
   voiceEvery: 1000,                // metres between spoken gaps in 'every' mode
   voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
-  bars: SUGGESTED_BARS.map((b) => ({ ...b })), // [{km, caf}] bars on the course (Settings)
+  bars: SUGGESTED_BARS.map((b) => ({ ...b })), // [{km, caf}] bars on the course, announced there
   preBar: 'caf',                   // before the start: 'caf', 'bar' or 'none'
-  raceGels: true,                  // take the race's gels (km 15.1 and 27): reminders
+  raceGels: true,                  // take the race's gels (km 15.1 and 27): "Gel in 250 meters"
   theme: 'mono',                   // colour theme (js/theme.js)
   pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun

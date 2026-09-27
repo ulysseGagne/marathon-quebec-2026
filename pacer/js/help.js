@@ -41,7 +41,8 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 
 <h3>Voice</h3>
 <p><b>When off pace</b> (default): quiet while you are within 10 s of the ghost. When the gap reaches 10 s it says “10 seconds behind” (or ahead), then again at 15, 20, 25 s as it gets worse, never while it gets better, and “on pace” once you are back within 7 s. On a well-run race it hardly speaks.</p>
-<p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run menu. In the tunnel it says “about…”. Also “time for a bar” at your bars and “chip time” at the start line in LIVE. Nothing else.</p>
+<p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run menu. In the tunnel it says “about…”.</p>
+<p>In every mode but off it also says “<b>Take caffeinated bar</b>” or “<b>Take decaffeinated bar</b>” at your bars (1 km before an aid station), “<b>Water in 250 meters</b>” before every aid station (“<b>Gel in 250 meters</b>” at km 15.1 and 27), and “chip time” at the start line in LIVE. Nothing else.</p>
 <p><b>With Apple Music</b>: by default a recorded voice talks over your music, which keeps playing. That needs the <b>side switch on ring</b> (no orange showing): on silent, iOS mutes this voice. Do Not Disturb keeps calls quiet. The other choice (Settings) is the iPhone's own voice, which works on silent but pauses Apple Music while it talks, and the music may not restart.</p>
 
 <h3>Screen off, pocket mode</h3>
@@ -49,23 +50,25 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks when off pace.</p>
 
 <h3>Fuel: bars and gels</h3>
-<p>The suggested plan (Settings → Fuel), a fuel stop every 18 to 32 minutes:</p>
+<p>The suggested plan (Settings → Fuel): one bar before the start, four on the course, and both race gels. A fuel stop every 21 to 29 minutes from km 4.8 to km 31.9.</p>
 <ul>
-<li><b>Before the start</b>, about 7:20 (30 to 45 min before the gun): a <b>caffeine</b> bar.</li>
-<li><b>km 8.1</b> (0:34): a regular bar. Flat riverside, water at 8.4; digested before the tunnel and the climb.</li>
-<li><b>km 15.1</b> (1:04): the race's gel.</li>
-<li><b>km 22.6</b> (1:36): a <b>caffeine</b> bar. Flat on the Route Verte, water at 22.9; caffeine peaks 45 to 60 minutes later, for km 30 to 38.</li>
-<li><b>km 27</b> (1:54): the race's gel.</li>
-<li><b>km 32.6</b> (2:19): a <b>caffeine</b> bar for the last 10 km. Flat on Boulevard Champlain, water at 32.9.</li>
+<li><b>Before the start</b>, about 7:20 (30 to 45 min before the gun): <b>CAF</b>. Its caffeine peaks 45 to 60 minutes later, around the start, and lasts the whole race.</li>
+<li><b>km 4.8</b> (0:20): <b>DECAF</b>. Water at 5.8.</li>
+<li><b>km 10.1</b> (0:42): <b>DECAF</b>. Flat along the river, water at 11.1 (in the tunnel). The last food before the Côte Dinan climb (km 11.4 to 13): eaten on the flat, and it arrives as energy on the climb.</li>
+<li><b>km 15.1</b> (1:05): the race's gel.</li>
+<li><b>km 21.9</b> (1:34): <b>CAF</b>. A gentle downhill (−3.9 %, easy breathing), water at 22.9. Its caffeine works from about km 30 to the finish.</li>
+<li><b>km 27</b> (1:55): the race's gel.</li>
+<li><b>km 31.9</b> (2:16): <b>CAF</b>, for the last 10 km. Flat on Boulevard Champlain, water at 32.9. Nothing after it: food that late has little time left to help.</li>
 </ul>
-<p>That is 4 bars (3 caffeinated, 1 regular: 2 regular ones spare) and 2 gels: about 160 g of carbs and 150 mg of caffeine. An XACT Energy bar is 25 g of carbs; the Performance ones add 50 mg of caffeine (guarana). The race's Krono gels are about 30 g, and some flavours have 25 to 50 mg of caffeine: if the ones handed out do, or if you had coffee at breakfast, make the km 32.6 bar a regular one. Try the caffeinated bars on a long run before race day.</p>
-<p>Why these spots: each bar is on flat ground, 300 m before a water station, never in the tunnel or on the climb from the tunnel to the Plains (km 10.7 to 16), and no solid food after km 33. On the map, bars are small BAR or CAF labels; under the number “Bar in 240 m”, “Caffeine bar in 240 m” or “Gel station in 240 m”; the voice says “Time for a bar”, “Time for a caffeine bar” or “Gel at the next station”. Settings checks any spot you type the same way (slope, water, tunnel) and adds up carbs and caffeine.</p>
+<p>How much: an XACT bar is 30 g with 25 g of carbs (100 kcal); the Performance ones (CAF) add 50 mg of caffeine from guarana. The race's gels are counted as ~25 g each (Krono gels are 24 to 30 g). In the race that is 4 bars + 2 gels ≈ 150 g of carbs, about 50 g an hour, plus 25 g before the start. Guidelines allow up to 90 g an hour for efforts over 2.5 hours, but with gels and drinks and a trained gut; a chewy bar takes 2 minutes to eat at 4:15/km, and each extra one is one more chance for a sore stomach. So 5 of your 6 bars: 3 CAF and 2 DECAF; the sixth, a DECAF, is a spare (a missed gel, a bad patch).</p>
+<p>Caffeine: 3 × 50 = 150 mg, about 2.4 mg per kg at 63.5 kg. The usual range is 3 to 6 mg/kg, but the smallest dose that helps may be as low as 2 mg/kg, and small doses taken late in a long effort have helped in studies. A usual cup of coffee at breakfast is fine on top. If the gels handed out are caffeinated too (Krono citrus 50 mg, maple-coffee 25 mg), swap the km 31.9 CAF for the spare DECAF. Try a CAF bar on a long run before race day.</p>
+<p>When: each bar is announced exactly <b>1 km before an aid station</b>: about 2 minutes to eat it, 2 more to put things away and get ready, then “Water in 250 meters”, so your hands are free and your head is on the station when you get there. The spots are on flat ground or a gentle downhill, never uphill or in a tunnel, and not right before a gel station. On the map, bars are small <b>CAF</b> and <b>DECAF</b> labels (the one before the start is at the start line); under the number “CAF bar in 240 m”, then “CAF bar now”, then “Water in 180 m”. Settings checks any spot you type the same way (the station 1 km on, slope, tunnel) and adds up carbs and caffeine.</p>
 
 <h3>Aid stations</h3>
-<p>km 3.2 (water only) · 5.8 · 8.4 · 11.1 · 12.6 · <b>15.1 gels</b> · 19.3 · 22.9 · 24.7 sponges · <b>27 gels</b> · 28.9 · 32.9 · 36.3 · 37.4 oranges · 40.6. Water and Krono electrolytes at every station but the first, toilets at all of them (runner's guide). A bar eaten just before a station can be washed down. On the map they are small circles with a drop, like the km markers, marked “gels”, “sponges” or “oranges” when they have them; also listed in Settings and in the Splits.</p>
+<p>km 3.2 (water only) · 5.8 · 8.4 · 11.1 · 12.6 · <b>15.1 gels</b> · 19.3 · 22.9 · 24.7 sponges · <b>27 gels</b> · 28.9 · 32.9 · 36.3 · 37.4 oranges · 40.6. Water and Krono electrolytes at every station but the first, toilets at all of them (runner's guide). The voice announces each one 250 m before it: “Water in 250 meters”, or “Gel in 250 meters” at km 15.1 and 27 (when the gels are in your plan). On the map they are small circles with a drop, like the km markers, marked “gels”, “sponges” or “oranges” when they have them; also listed in Settings and in the Splits.</p>
 
 <h3>Colours</h3>
-<p>Settings → Colours. <b>B&amp;W</b> (default): white on black with one yellow accent, your arrow; the most contrast in sunlight. <b>Amber</b>: everything in one warm yellow. On the map, in both: round badges with a number are the kilometres, round badges with a drop are aid stations, BAR and CAF labels are your bars.</p>
+<p>Settings → Colours. <b>B&amp;W</b> (default): white on black with one yellow accent, your arrow; the most contrast in sunlight. <b>Amber</b>: everything in one warm yellow. On the map, in both: round badges with a number are the kilometres, round badges with a drop are aid stations, CAF and DECAF labels are your bars.</p>
 
 <h3>Practice this week</h3>
 <ol>
@@ -78,7 +81,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p><b>Night before</b></p>
 <ol>
 <li>Charge to 100 %. Open the app once on Wi-Fi: the chip must say <b>Works offline</b>.</li>
-<li>Settings: check your target, your <b>fuel plan</b>, and tap a Voice button to hear it with Apple Music playing. Pack the bars in the order you eat them.</li>
+<li>Settings: check your target, your <b>fuel plan</b>, and tap a Voice button to hear it with Apple Music playing. Pack the bars in the order you eat them: DECAF, DECAF, CAF, CAF (and the spare DECAF).</li>
 <li>Safari → Share → <b>Add to Home Screen</b>, and start it from there (full screen).</li>
 <li>Settings → Privacy &amp; Security → Location Services: on; Safari Websites (and the Pacer icon if listed) → While Using, <b>Precise Location on</b>.</li>
 <li>Settings → Display &amp; Brightness → <b>Auto-Lock → Never</b> for the morning (the app also keeps the screen on). Do not press the side button during the run: locking pauses the app.</li>
@@ -89,7 +92,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <ol>
 <li>Keep the phone warm inside your clothes: cold drains old batteries fast.</li>
 <li><b>Do Not Disturb</b> (or Airplane mode — GPS keeps working) so no call or notification covers the screen. <b>Side switch on ring</b>, so the voice can talk over your music.</li>
-<li>About 7:20: the pre-start bar (caffeine), with a few sips of water.</li>
+<li>About 7:20: the pre-start bar (CAF), with a few sips of water. The start screen reminds you.</li>
 <li>Open the app in the corral 10 minutes early to get a GPS lock (chip ±5 m).</li>
 <li>Wind: tap the “Forecast wind” chip if it shows (or Settings → Use the forecast). Brightness up.</li>
 <li>Press LIVE in the corral (or START as you cross the mat). Guided Access if you use it.</li>

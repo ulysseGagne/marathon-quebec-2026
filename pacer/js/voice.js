@@ -21,6 +21,7 @@ export class Voice {
     this.out = null;
     this.buffers = new Map(); // clip id -> Promise<AudioBuffer>
     this.sources = [];
+    this.until = 0;           // when the clips already scheduled end (AudioContext time)
     this.log = null;          // test hook: (text, how) => void
     if (this.ok) {
       const pick = () => {
@@ -90,16 +91,22 @@ export class Voice {
         if (ctx.state !== 'running') throw new Error('audio suspended');
       }
       const bufs = await Promise.all(ids.map((id) => this._buffer(id)));
-      this._stop();
-      let t = ctx.currentTime + 0.03;
-      this.sources = bufs.map((b) => {
+      // After what is still playing, so a gap a second later does not cut "Water in 250
+      // meters" short; unless that means waiting more than a few seconds.
+      const now = ctx.currentTime;
+      let t = now + 0.03;
+      if (this.until > t && this.until - now < 4) t = this.until + 0.25;
+      else this._stop();
+      for (const b of bufs) {
         const s = ctx.createBufferSource();
         s.buffer = b;
         s.connect(this.out);
         s.start(t);
+        s.onended = () => { this.sources = this.sources.filter((x) => x !== s); };
+        this.sources.push(s);
         t += b.duration + 0.04;
-        return s;
-      });
+      }
+      this.until = t;
       if (this.log) this.log(text, 'clips');
     } catch {
       this._speak(text);
@@ -123,6 +130,7 @@ export class Voice {
   _stop() {
     for (const s of this.sources) { try { s.stop(); } catch { /* ignore */ } }
     this.sources = [];
+    this.until = 0;
     if (this.ok) { try { window.speechSynthesis.cancel(); } catch { /* ignore */ } }
   }
 

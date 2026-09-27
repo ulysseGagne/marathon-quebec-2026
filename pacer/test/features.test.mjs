@@ -60,12 +60,13 @@ test('voice: every gap and cue the app says has a recorded clip', () => {
   assert.deepEqual(gapClips(-120), ['m2', 'ahead']);
   // fixed cues named in the app
   const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
-  const ids = new Set(['about', 'every250', 'every500', 'every1000', 'every2000', 'bar', 'bar_caf', 'gel']);
+  const ids = new Set(['about', 'every250', 'every500', 'every1000', 'every2000']);
   for (const m of app.matchAll(/clips: \[((?:'[a-z0-9_]+'(?:, )?)+)\]/g)) {
     for (const id of m[1].split(', ')) ids.add(id.slice(1, -1));
   }
-  assert.ok(ids.has('bar') || app.includes("clips.push('bar')"));
-  ids.add('bar');
+  // and the ones pushed as a choice: clips.push(x ? 'a' : 'b')
+  for (const m of app.matchAll(/clips\.push\([^)]*?'([a-z0-9_]+)' : '([a-z0-9_]+)'\)/g)) ids.add(m[1]).add(m[2]);
+  for (const id of ['take_caf', 'take_decaf', 'water250', 'gel250']) assert.ok(ids.has(id), `app never plays ${id}`);
   for (const id of ids) assert.ok(clip(id), `missing voice/${id}.mp3`);
 });
 
@@ -143,32 +144,41 @@ test('wind forecast: race hours averaged, direction averaged as vectors (north w
   }
 });
 
-test('fuel: suggested bars are flat, just before water, out of the tunnel, and fit around the gels', () => {
+test('fuel: each suggested bar is 1 km before water, on easy ground, and fits around the gels', () => {
   const plan = course.plan({ target: 10770 });
-  for (const b of SUGGESTED_BARS) {
-    const sp = course.spotAt(b.km * 1000);
-    assert.equal(sp.terrain, 'flat', `km ${b.km}: ${sp.terrain} ${sp.grade.toFixed(1)} %`);
-    assert.ok(sp.water && sp.water.m <= 400, `km ${b.km}: water ${JSON.stringify(sp.water)}`);
-    assert.ok(!sp.tunnel, `km ${b.km} in a tunnel`);
-    assert.ok(b.km <= 33, 'no solid food after km 33');
-  }
-  // bar, gel, bar, gel, bar: a fuel stop every 15-35 min
   const gels = course.aid.filter((a) => a.what === 'gels').map((a) => a.km);
   assert.deepEqual(gels, [15.1, 27]);
+  for (const b of SUGGESTED_BARS) {
+    const sp = course.spotAt(b.km * 1000);
+    // announced exactly 1 km before an aid station that is not a gel station
+    assert.ok(sp.water && Math.abs(sp.water.m - 1000) <= 50, `km ${b.km}: water ${JSON.stringify(sp.water)}`);
+    assert.ok(!gels.includes(sp.water.km), `km ${b.km}: bar right before a gel`);
+    assert.ok(['flat', 'gentle downhill'].includes(sp.terrain), `km ${b.km}: ${sp.terrain} ${sp.grade.toFixed(1)} %`);
+    assert.ok(!sp.tunnel, `km ${b.km}: tunnel while eating`);
+    assert.ok(plan.timeAt(b.km * 1000) < 2 * 3600 + 20 * 60, `km ${b.km}: too late to help`);
+  }
+  // bar, bar, gel, bar, gel, bar: a fuel stop every 15-35 min
   const stops = SUGGESTED_BARS.map((b) => ({ km: b.km, bar: true })).concat(gels.map((km) => ({ km, bar: false }))).sort((a, b) => a.km - b.km);
-  assert.deepEqual(stops.map((x) => x.bar), [true, false, true, false, true]);
+  assert.deepEqual(stops.map((x) => x.bar), [true, true, false, true, false, true]);
   for (let i = 1; i < stops.length; i++) {
     const min = (plan.timeAt(stops[i].km * 1000) - plan.timeAt(stops[i - 1].km * 1000)) / 60;
     assert.ok(min >= 15 && min <= 35, `${stops[i - 1].km} -> ${stops[i].km}: ${min.toFixed(0)} min`);
   }
-  // caffeine: before the start plus the two second-half bars, 50 mg each
+  // about 50 g of carbs an hour in the race (25 g per bar or gel)
+  const perHour = ((SUGGESTED_BARS.length + gels.length) * 25) / (plan.timeAt(course.total) / 3600);
+  assert.ok(perHour >= 45 && perHour <= 60, `${perHour.toFixed(0)} g/h`);
+  // caffeine: before the start plus two bars in the second half; 3 CAF + 2 DECAF of 6 bars
   assert.equal(SUGGESTED_BARS.filter((b) => b.caf).length, 2);
   assert.ok(SUGGESTED_BARS.filter((b) => b.caf).every((b) => b.km > 21));
+  assert.equal(SUGGESTED_BARS.filter((b) => !b.caf).length, 2);
   // and the spots it warns about
-  assert.equal(course.spotAt(10800).terrain, 'in the tunnel');
-  assert.equal(course.spotAt(12300).terrain, 'uphill');
-  assert.equal(course.spotAt(14800).terrain, 'uphill');   // the first placeholder had a bar here
-  assert.equal(course.spotAt(17000).water, null);
+  assert.equal(course.spotAt(10500).terrain, 'in the tunnel');
+  assert.equal(course.spotAt(12100).terrain, 'uphill');
+  assert.equal(course.spotAt(14500).terrain, 'uphill');
+  assert.equal(course.spotAt(14100).water.km, 15.1);        // 1 km before a gel station
+  assert.equal(course.spotAt(21900).terrain, 'gentle downhill'); // -3.9 %: fine to chew on
+  assert.equal(course.spotAt(25000).terrain, 'steep downhill');  // down to the river
+  assert.ok(Math.abs(course.spotAt(21900).water.m - 1000) < 1);
 });
 
 test('bars: earlier suggestions move to the new plan, your own list stays', async () => {
@@ -177,7 +187,8 @@ test('bars: earlier suggestions move to the new plan, your own list stays', asyn
     getItem: (k) => (k in stored ? stored[k] : null), setItem: (k, v) => { stored[k] = String(v); }, removeItem: (k) => { delete stored[k]; },
   };
   const { loadSettings } = await import('../js/store.js');
-  for (const old of [[8.1, 14.8, 24.4, 32.6], [8.1, 19, 26.7, 32.6]]) {
+  const lastPlan = [{ km: 8.1, caf: false }, { km: 22.6, caf: true }, { km: 32.6, caf: true }];
+  for (const old of [[8.1, 14.8, 24.4, 32.6], [8.1, 19, 26.7, 32.6], lastPlan]) {
     stored['pacer.settings.v1'] = JSON.stringify({ bars: old });
     assert.deepEqual(loadSettings().bars, SUGGESTED_BARS);
   }
