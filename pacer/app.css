@@ -257,7 +257,15 @@ button.danger { background: #2a0d0d; border-color: #5a1a1a; color: #ff6b6b; }
 
 /* splits table */
 table.splits { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-table.splits th { text-align: left; font: 700 12px/1.2 var(--ui); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 4px; position: sticky; top: 0; background: var(--sheet); }
+/* The header row stays pinned while the kilometres scroll under it. The list starts flush
+   with the top of its scroll box (no padding there), and a band of sheet colour above the
+   header hides any row that would otherwise peek out over it on iPhone Safari. */
+#plan-body { padding-top: 0; }
+table.splits th {
+  text-align: left; font: 700 12px/1.2 var(--ui); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 8px 4px 6px; position: sticky; top: 0; z-index: 1; background: var(--sheet);
+  box-shadow: 0 -12px 0 var(--sheet), inset 0 -1px 0 #2a2a2a;
+}
 table.splits td { padding: 7px 4px; border-top: 1px solid #1f1f1f; font: 600 16px/1.2 var(--ui); }
 table.splits td.pace { font: 700 20px/1 var(--cond); }
 table.splits td.note { color: var(--muted); font-size: 13px; line-height: 1.25; }

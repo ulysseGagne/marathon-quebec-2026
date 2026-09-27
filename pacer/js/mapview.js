@@ -231,20 +231,24 @@ export class MapView {
       paint: { 'text-color': T.kmText },
     });
     m.addLayer({
+      id: 'ends', type: 'symbol', source: 'ends',
+      layout: {
+        // START and FINISH are ~100 m apart: zoomed out, FINISH moves below its point
+        // instead of printing over START (START is placed first).
+        'text-field': ['get', 'label'], 'text-font': ['Open Sans Bold'], 'text-size': 14,
+        'text-variable-anchor': ['bottom', 'top', 'right', 'left'], 'text-radial-offset': 0.9,
+        'text-allow-overlap': false, 'symbol-sort-key': ['get', 'rank'],
+      },
+      paint: { 'text-color': T.ends, 'text-halo-color': '#000000', 'text-halo-width': 2 },
+    });
+    // on top, and placed first: START/FINISH and street names move out of its way
+    m.addLayer({
       id: 'bars', type: 'symbol', source: 'bars', minzoom: 9,
       layout: {
-        'icon-image': 'bar-pill', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-image': 'bar-pill', 'icon-allow-overlap': true, 'icon-ignore-placement': false, // labels keep clear of it
         'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 13, 0.8, 16, 1, 18, 1.2],
         'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       },
-    });
-    m.addLayer({
-      id: 'ends', type: 'symbol', source: 'ends',
-      layout: {
-        'text-field': ['get', 'label'], 'text-font': ['Open Sans Bold'], 'text-size': 14,
-        'text-allow-overlap': true, 'text-offset': [0, -1.4],
-      },
-      paint: { 'text-color': T.ends, 'text-halo-color': '#000000', 'text-halo-width': 2 },
     });
   }
 
@@ -303,8 +307,8 @@ export class MapView {
     })));
     const [sla, slo] = line.latLonAt(0);
     const [fla, flo] = line.latLonAt(course.total);
-    const ends = [pointFeature(slo, sla, { label: 'START' })];
-    if (Math.hypot(sla - fla, slo - flo) > 0.0004) ends.push(pointFeature(flo, fla, { label: 'FINISH' }));
+    const ends = [pointFeature(slo, sla, { label: 'START', rank: 0 })];
+    if (Math.hypot(sla - fla, slo - flo) > 0.0004) ends.push(pointFeature(flo, fla, { label: 'FINISH', rank: 1 }));
     else ends[0].properties.label = 'START · FINISH';
     this.map.getSource('ends').setData(fc(ends));
     this.map.getSource('course-tunnel').setData(fc(course.tunnels
