@@ -43,6 +43,19 @@ const context = await browser.newContext({
   geolocation: { latitude: 46.82655, longitude: -71.24935, accuracy: 5 },
   permissions: ['geolocation'],
 });
+// a canned forecast: wind from the north-east, about 20 km/h during the race
+const forecast = { hourly: { time: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [] } };
+for (let h = 0; h < 24; h++) {
+  forecast.hourly.time.push(`2026-10-04T${String(h).padStart(2, '0')}:00`);
+  forecast.hourly.wind_speed_10m.push(18 + (h % 5));
+  forecast.hourly.wind_direction_10m.push(40 + h);
+  forecast.hourly.wind_gusts_10m.push(32);
+}
+let forecastCalls = 0;
+await context.route('https://api.open-meteo.com/**', (route) => {
+  forecastCalls++;
+  route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(forecast) });
+});
 const page = await context.newPage();
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -93,6 +106,37 @@ await sleep(300);
 const barsSet = await page.evaluate(() => window.__pacer.S.settings.bars);
 console.log('bars typed:', JSON.stringify(barsSet), '|', await page.textContent('#set-bars-note'));
 if (JSON.stringify(barsSet) !== '[8.1,15,24.4,33]') errors.push('bars input');
+// the wind forecast, on demand
+await page.click('#set-wind-fc');
+await sleep(800);
+const windSet = await page.evaluate(() => ({ wind: window.__pacer.S.settings.wind, note: document.querySelector('#set-wind-fc-note').textContent }));
+console.log('forecast wind:', JSON.stringify(windSet.wind), '|', windSet.note);
+if (windSet.wind.fromDeg !== 45 || windSet.wind.kmh < 18 || windSet.wind.kmh > 22) errors.push('forecast wind not applied');
+await page.evaluate(() => document.querySelector('#set-wind-fc').scrollIntoView({ block: 'center' }));
+await sleep(200);
+await shot('02c-settings-wind');
+// ... and offered once on race morning, on the start screen
+await page.click('#sheet-settings [data-close]');
+await sleep(300);
+await page.evaluate(() => {
+  const { S } = window.__pacer;
+  S.settings.wind = { fromDeg: 45, kmh: 0 }; S.settings.windSource = null; S.windTried = false;
+  window.__pacer.maybeSuggestWind(S.marathon.gun - 3600e3); // 7:00 on race morning
+});
+await sleep(800);
+const chipTxt = await page.evaluate(() => document.querySelector('#chips').textContent);
+console.log('race-morning chip:', chipTxt);
+if (!/Forecast wind: NE/.test(chipTxt)) errors.push('race-morning wind chip');
+await page.click('[data-act="wind"]');
+await sleep(300);
+const windChip = await page.evaluate(() => window.__pacer.S.settings.wind);
+if (windChip.kmh < 18) errors.push('wind chip did not apply');
+console.log('forecast requests:', forecastCalls);
+await shot('02d-wind-chip-used');
+// back to still air for the simulated race below
+await page.evaluate(() => { const { S } = window.__pacer; S.settings.wind = { fromDeg: 45, kmh: 0 }; S.settings.windSource = null; });
+await page.click('[data-open="settings"]');
+await sleep(400);
 await page.evaluate(() => document.querySelector('#set-mix').scrollIntoView({ block: 'start' }));
 await sleep(300);
 await shot('02b-settings-voice');

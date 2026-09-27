@@ -14,6 +14,7 @@ import { Voice } from './voice.js';
 import { simulate } from './sim.js';
 import { angleDiff, haversine, bearingDeg } from './geo.js';
 import { helpHtml } from './help.js';
+import { fetchRaceWind } from './weather.js';
 import { THEMES, THEME_ORDER, THEME_NOTES, applyTheme, themeName } from './theme.js';
 
 const VERSION = '2026.09.28';
@@ -101,6 +102,7 @@ async function boot() {
   }
   loop();
   setInterval(watchdog, 5000);
+  maybeSuggestWind();
 }
 
 function planFor(course, run) {
@@ -240,6 +242,7 @@ function handleFix(fix) {
 }
 
 function watchdog() {
+  maybeSuggestWind();
   if (S.sim) return;
   if (S.phase === 'running' && Date.now() - S.fixReal > 20000 && !(S.course && S.tracker && S.tracker.x && S.course.inTunnel(S.tracker.peek(clock.now()).d, 80))) {
     startGps(); // iOS sometimes stalls the watch; restarting it helps
@@ -791,6 +794,10 @@ function renderChips() {
       const dist = haversine(S.fix.lat, S.fix.lon, la, lo);
       if (dist > 150) chips.push(chip('', `Start line ${dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m'} away`));
     }
+    if (S.windSuggest) {
+      const w = S.windSuggest;
+      chips.push(`<button class="chip tap" data-act="wind">Forecast wind: ${dirName(w.dir8)} ${Math.round(w.kmh)} km/h · tap to use</button>`);
+    }
     if (S.updateReady) chips.push('<button class="chip tap" data-act="update">Update ready · tap to reload</button>');
   } else if (S.phase === 'running' && S.needWakeTap) {
     chips.push('<button class="chip tap" data-act="wake">Tap: keep screen awake</button>');
@@ -817,6 +824,12 @@ function bindUi() {
     if (b.dataset.act === 'compass') await enableCompass();
     if (b.dataset.act === 'wake') { const ok = await S.wake.enable(); S.needWakeTap = !ok; }
     if (b.dataset.act === 'update') applyUpdate();
+    if (b.dataset.act === 'wind' && S.windSuggest) {
+      const w = S.windSuggest;
+      S.windSuggest = null;
+      applyWind(w);
+      toast(`Wind set: from ${dirName(w.dir8)}, ${Math.round(w.kmh)} km/h. The ghost now eases into it and uses the tailwind; same finish time.`, 6000);
+    }
     renderChips();
   });
   document.addEventListener('pointerdown', async () => {
@@ -1086,6 +1099,20 @@ function bindSettings() {
     setVoiceEvery(Number(b.dataset.v));
     renderSettings();
   });
+  $('#set-wind-fc').addEventListener('click', async () => {
+    const b = $('#set-wind-fc');
+    const note = $('#set-wind-fc-note');
+    b.disabled = true;
+    note.textContent = 'Getting the forecast…';
+    try {
+      applyWind(await raceForecast());
+    } catch (e) {
+      note.textContent = navigator.onLine === false
+        ? 'No connection. Set the wind by hand, or leave it: still air is fine.'
+        : `Could not get the forecast (${e.message}). Set the wind by hand, or leave it.`;
+    }
+    b.disabled = false;
+  });
   $('#set-mix').addEventListener('click', (e) => {
     const b = e.target.closest('[data-mix]'); if (!b) return;
     S.settings.voiceMix = b.dataset.mix === '1';
@@ -1115,6 +1142,53 @@ function bindSettings() {
   $('#btn-sim').addEventListener('click', () => startSim(20));
 }
 
+// ---- wind forecast (optional: needs a connection, asked once)
+function raceDay() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(gunMs()));
+  } catch { return '2026-10-04'; }
+}
+
+function fmtRaceDay() {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', month: 'short', day: 'numeric' }).format(new Date(gunMs())); } catch { return 'Oct 4'; }
+}
+
+function raceForecast() {
+  const [la, lo] = S.marathon.line.latLonAt(S.marathon.total / 2);
+  return fetchRaceWind({ lat: la, lon: lo, date: raceDay() });
+}
+
+function settingsChanged() {
+  saveSettings(S.settings);
+  S.readyPlan = planFor(S.marathon, null);
+  if (S.course === S.marathon && S.phase !== 'running') S.plan = S.readyPlan;
+  if (!$('#sheet-settings').hidden) renderSettings();
+  if (S.phase === 'ready') renderReady();
+}
+
+function applyWind(w) {
+  const kmh = Math.round(w.kmh);
+  S.settings.wind = { fromDeg: w.dir8, kmh };
+  S.settings.windSource = { at: Date.now(), fromDeg: w.fromDeg, dir8: w.dir8, kmh: w.kmh, gust: w.gust };
+  settingsChanged();
+}
+
+// Race morning (from 3 h before the gun), on the start screen, with a connection: look at
+// the forecast once and offer it on a chip. Never during the run, never again after.
+function maybeSuggestWind(now = Date.now()) {
+  if (S.windTried || S.phase !== 'ready' || S.sim || !S.marathon) return;
+  const g = gunMs();
+  if (now < g - 3 * 3600e3 || now > g) return;
+  const src = S.settings.windSource;
+  if (src && now - src.at < 4 * 3600e3) return; // already fetched this morning
+  S.windTried = true;
+  raceForecast().then((w) => {
+    if (Math.round(w.kmh) < 3 && S.settings.wind.kmh === 0) return; // still air already
+    S.windSuggest = w;
+    renderChips();
+  }).catch(() => { /* no connection: nothing to suggest */ });
+}
+
 const DIRS = [['N', 0], ['NE', 45], ['E', 90], ['SE', 135], ['S', 180], ['SW', 225], ['W', 270], ['NW', 315]];
 function dirName(deg) { return DIRS.reduce((b, d) => (Math.abs(angleDiff(d[1], deg)) < Math.abs(angleDiff(b[1], deg)) ? d : b))[0]; }
 
@@ -1138,6 +1212,10 @@ function renderSettings() {
     $('#set-wind-note').textContent = `River (km 25.7–35): ${signed(river)} s. Upper town (km 13–25): ${signed(upper)} s. Same finish time.`;
   } else {
     $('#set-wind-note').textContent = 'Optional, on race morning: the forecast direction the wind comes FROM and its speed. The ghost eases into headwinds and speeds up with tailwinds, weighted by how exposed each stretch is. Same finish time.';
+  }
+  const src = s.windSource;
+  if (src && document.activeElement !== $('#set-wind-fc')) {
+    $('#set-wind-fc-note').textContent = `Forecast for ${fmtRaceDay()} 8:00–11:00 (Open-Meteo, fetched ${fmtTimeOfDay(src.at)}): from ${dirName(src.dir8)} (${Math.round(src.fromDeg)}°), ${Math.round(src.kmh)} km/h${src.gust ? `, gusts to ${Math.round(src.gust)}` : ''}. ${s.wind.kmh === Math.round(src.kmh) && s.wind.fromDeg === src.dir8 ? 'In use.' : 'Changed by hand since.'}`;
   }
   $('#set-aid').textContent = `${s.aidSeconds} s`;
   $('#set-vmode').innerHTML = voiceModeButtons();
@@ -1592,6 +1670,6 @@ function toast(msg, ms = 3000) {
 }
 
 // test hook (used by the automated browser tests)
-window.__pacer = { S, clock, handleFix, startSim, stopRun, openSheet };
+window.__pacer = { S, clock, handleFix, startSim, stopRun, openSheet, maybeSuggestWind };
 
 boot();

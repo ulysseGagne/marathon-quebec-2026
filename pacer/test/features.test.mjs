@@ -7,6 +7,7 @@ import { gapClips, spokenGap, offPaceCue } from '../js/gap.js';
 import { parseKms } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
 import { mulberry32, gauss } from '../js/sim.js';
+import { raceWind, forecastUrl } from '../js/weather.js';
 
 const spec = JSON.parse(readFileSync(new URL('../data/course.json', import.meta.url)));
 const course = new Course(spec);
@@ -115,4 +116,27 @@ test('voice when off pace: quiet inside ±10 s, then 10, 15, 20…, "on pace" wh
   assert.deepEqual(said, [10, 15, 20, 15, 'pace', -10, -15]);
   run([-6]);
   assert.deepEqual(said.slice(-1), ['pace']);
+});
+
+test('wind forecast: race hours averaged, direction averaged as vectors (north wraps)', () => {
+  const hourly = { time: [], wind_speed_10m: [], wind_direction_10m: [], wind_gusts_10m: [] };
+  for (let h = 0; h < 24; h++) {
+    const race = h >= 8 && h <= 11;
+    hourly.time.push(`2026-10-04T${String(h).padStart(2, '0')}:00`);
+    hourly.wind_speed_10m.push(race ? [12, 14, 16, 18][h - 8] : 40);
+    hourly.wind_direction_10m.push(race ? [350, 10, 20, 0][h - 8] : 180);
+    hourly.wind_gusts_10m.push(race ? 25 + h : 60);
+  }
+  const w = raceWind({ hourly });
+  assert.ok(Math.abs(w.kmh - 15) < 1e-9);
+  assert.ok(w.fromDeg < 10 || w.fromDeg > 355, `from ${w.fromDeg}`);
+  assert.equal(w.dir8, 0);
+  assert.equal(w.gust, 36);
+  assert.equal(raceWind({}), null);
+  assert.equal(raceWind({ hourly: { time: ['2026-10-04T03:00'], wind_speed_10m: [5], wind_direction_10m: [90] } }), null);
+  const u = forecastUrl(46.8, -71.22, '2026-10-04');
+  assert.ok(u.startsWith('https://api.open-meteo.com/v1/forecast?'));
+  for (const part of ['start_date=2026-10-04', 'end_date=2026-10-04', 'wind_speed_10m', 'wind_direction_10m', 'wind_speed_unit=kmh', 'timezone=America%2FToronto']) {
+    assert.ok(u.includes(part), part);
+  }
 });
