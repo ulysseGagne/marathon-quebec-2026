@@ -300,9 +300,9 @@ const toastTxt = await page.textContent('#toast');
 await sleep(1500);
 const caught = await page.evaluate((n) => ({ said: window.__spoken.slice(n), resume: window.__pacer.S.resume, up: window.__pacer.S.caughtUp }), saidBefore);
 console.log('after unlock:', toastTxt, JSON.stringify(caught));
-// it catches up; when off pace it says the gap only if it is 10 s or more
-const spokeGap = caught.said.some((t) => /seconds? (behind|ahead)$|on pace$/.test(t));
-if (!/paused/.test(toastTxt) || caught.resume || !caught.up || spokeGap !== (Math.abs(caught.up.gap) >= 10)) errors.push(`catch-up after unlock: ${JSON.stringify(caught)}`);
+// it catches up; when off pace it says the gap only from 10 s (or "On pace." after a warning)
+const upOk = caught.up && (Math.abs(caught.up.gap) >= 10 ? /seconds? (behind|ahead)$/.test(caught.up.said || '') : !caught.up.said || caught.up.said === 'On pace.');
+if (!/paused/.test(toastTxt) || caught.resume || !upOk) errors.push(`catch-up after unlock: ${JSON.stringify(caught)}`);
 const fin = await waitVirtual(10900);
 await sleep(1500);
 await shot('13-finish');
@@ -310,11 +310,18 @@ spoken.push(...(await page.evaluate(() => window.__spoken)));
 const how = await page.evaluate(() => window.__how);
 console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)), '| bars:', spoken.filter((t) => /bar/.test(t)).length,
   '| recorded clips', how.filter((h) => h === 'clips').length, 'iPhone voice', how.filter((h) => h === 'speech').length);
-// default voice: only when off pace (10 s or more), both ways, never "On pace." 
+// default voice: only when off pace (10 s or more), both ways, "On pace." at the ghost
 const gapsSaid = spoken.map((t) => /(\d+) seconds? (behind|ahead)/.exec(t)).filter(Boolean).map((m) => Number(m[1]));
 console.log('off-pace voice said gaps:', JSON.stringify(gapsSaid), '| on pace:', spoken.filter((t) => /^On pace/.test(t)).length);
 if (!gapsSaid.length) errors.push('voice never said the gap');
-if (spoken.some((t) => /^On pace/.test(t))) errors.push('"On pace" when off pace');
+// "On pace." only after a warning, once per warning
+{
+  let pending = false;
+  for (const t of spoken) {
+    if (/(\d+) seconds? (behind|ahead)/.test(t)) pending = true;
+    if (/On pace\./.test(t)) { if (!pending) errors.push('"On pace" without a warning before it'); pending = false; }
+  }
+}
 if (gapsSaid.some((g) => g < 10)) errors.push(`off-pace voice spoke inside 10 s: ${JSON.stringify(gapsSaid)}`);
 // bars 1 km before water, every aid station 250 m before it
 const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
@@ -458,6 +465,51 @@ const offlineOk = await p3.evaluate(() => window.__pacer.S.mapReady && !!window.
 console.log('offline reload: map', offlineOk);
 await p3.screenshot({ path: join(out, '31-offline.png') });
 if (!offlineOk) errors.push('offline reload failed');
+
+// ---- location blocked: the chip opens Help, whose first section has the steps for this
+// phone and browser, and "Try again" picks the GPS up once it is allowed
+const ctx4 = await browser.newContext({
+  viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+  geolocation: { latitude: 46.82655, longitude: -71.24935, accuracy: 5 }, serviceWorkers: 'block',
+});
+// (headless Chromium leaves the permission prompt hanging: deny it the way iOS reports it)
+await ctx4.addInitScript(() => {
+  const real = navigator.geolocation;
+  window.__geoDenied = true;
+  const geo = {
+    watchPosition: (ok, err, o) => { if (window.__geoDenied) { setTimeout(() => err({ code: 1, message: 'denied' }), 50); return -1; } return real.watchPosition(ok, err, o); },
+    clearWatch: (id) => { if (id !== -1) real.clearWatch(id); },
+    getCurrentPosition: (ok, err, o) => real.getCurrentPosition(ok, err, o),
+  };
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, get: () => geo });
+});
+const p4 = await ctx4.newPage();
+p4.on('pageerror', (e) => errors.push(String(e)));
+await p4.goto('http://localhost:8765/pacer/');
+await p4.waitForSelector('#app.phase-ready', { timeout: 60000 });
+await sleep(1500);
+const blockedChip = await p4.textContent('#chips');
+await p4.click('[data-act="location"]');
+await sleep(400);
+const helpTop = await p4.evaluate(() => ({
+  first: document.querySelector('#help-body h3').textContent,
+  status: document.querySelector('#help-body .loc-status').textContent,
+  steps: document.querySelector('#help-body ol').textContent,
+  retry: !!document.querySelector('#loc-retry'),
+}));
+console.log('location blocked:', blockedChip, '|', helpTop.first, '|', helpTop.status);
+await p4.screenshot({ path: join(out, '40-location-help.png') });
+if (!/Location blocked · tap to fix/.test(blockedChip) || helpTop.first !== 'Location' || !/blocked/.test(helpTop.status) ||
+    !/Website Settings/.test(helpTop.steps) || !helpTop.retry) errors.push('location help');
+await p4.evaluate(() => { window.__geoDenied = false; }); // allowed in Settings
+await ctx4.grantPermissions(['geolocation'], { origin: 'http://localhost:8765' });
+await p4.click('#loc-retry');
+await sleep(3200);
+const afterRetry = await p4.evaluate(() => ({ status: document.querySelector('#help-body .loc-status').textContent, chips: document.querySelector('#chips').textContent }));
+console.log('after Try again:', afterRetry.status, '|', afterRetry.chips);
+if (!/Location is on/.test(afterRetry.status) || /blocked/.test(afterRetry.chips)) errors.push('location retry');
+await ctx4.close();
 
 console.log('console errors:', errors.length ? errors : 'none');
 await browser.close();

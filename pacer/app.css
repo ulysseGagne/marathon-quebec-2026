@@ -281,6 +281,11 @@ table.splits tr.down td.pace { color: var(--muted); }
 .prose ol, .prose ul { padding-left: 20px; }
 .prose li { margin: 6px 0; }
 .prose b { color: #fff; }
+.prose .loc-status { font-weight: 700; color: #fff; }
+.prose .loc-status.bad, .prose .loc-status.bad b { color: var(--accent); }
+.prose details.more { margin: 8px 0 4px; border-top: 1px solid var(--line); }
+.prose details.more > summary { padding: 12px 0; font: 700 16px/1.2 var(--ui); color: #fff; cursor: pointer; }
+.prose #loc-retry { margin: 4px 0 8px; }
 
 /* finish */
 #finish {

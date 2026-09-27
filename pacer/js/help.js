@@ -1,6 +1,7 @@
-// "How it works" and the race-day checklist, shown in the Help sheet.
-export function helpHtml(version) {
-  return `
+// "How it works" and the race-day checklist, shown in the Help sheet. First: location,
+// with the steps for the phone and browser in use (env from app.js).
+export function helpHtml(version, env = {}) {
+  return `${locationHtml(env)}
 <h3>The number</h3>
 <p><b>+3</b> = 3 seconds ahead of the ghost: time in the bank you can lose. <b>−3</b> = 3 seconds behind. <b>0</b> = right on it.
 From 100 s it switches to minutes: −1:40.</p>
@@ -40,13 +41,13 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>Km 10.7–11.3 and km 36.2–36.7: about 580 m each time without GPS. The number keeps going (with ~) and catches up after the exit.</p>
 
 <h3>Voice</h3>
-<p><b>When off pace</b> (default): silent while you are within 10 s of the ghost, either way: silence means you are within 10 s. From there it speaks at every 5 s step, as the gap gets worse and as it gets better: “10 seconds behind”, “15”, “20”… then “15”, “10” as you come back, and nothing more once you are inside ±10 s again. The same ahead: “10 seconds ahead”, “15 seconds ahead”… A wobble around a step is not repeated. On a well-run race it hardly speaks.</p>
+<p><b>When off pace</b> (default): warnings start 10 s from the ghost, either way, then come at every 5 s step as the gap gets worse and as it gets better: “10 seconds behind”, “15”, “20”… then “15”, “10” as you come back. After a warning, it says “<b>on pace</b>” the moment you meet the ghost again. The same ahead: “10 seconds ahead”, “15 seconds ahead”… then “on pace” when the ghost catches you. Nothing else within 10 s, and a wobble around a step is not repeated. On a well-run race it hardly speaks.</p>
 <p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run menu. In the tunnel it says “about…”.</p>
 <p>In every mode but off it also says “<b>Take caffeinated bar</b>” or “<b>Take decaffeinated bar</b>” at your bars (1 km before an aid station), “<b>Water in 250 meters</b>” before every aid station (“<b>Gel in 250 meters</b>” at km 15.1 and 27), and “chip time” at the start line in LIVE. Nothing else.</p>
 <p><b>With Apple Music</b>: by default a recorded voice talks over your music, which keeps playing. That needs the <b>side switch on ring</b> (no orange showing): on silent, iOS mutes this voice. Do Not Disturb keeps calls quiet. The other choice (Settings) is the iPhone's own voice, which works on silent but pauses Apple Music while it talks, and the music may not restart.</p>
 
 <h3>Screen off, pocket mode</h3>
-<p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds; in “when off pace”, only if you are 10 s or more off). The app keeps the screen from locking by itself.</p>
+<p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds; in “when off pace”, only if you are 10 s or more off, or “on pace” if you met the ghost after a warning). The app keeps the screen from locking by itself.</p>
 <p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks when off pace.</p>
 
 <h3>Fuel: bars and gels</h3>
@@ -103,4 +104,63 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>The official course PDF could not be downloaded while this was built. The course was rebuilt from the earlier trace (checked against the official 2026 map) snapped onto real streets; its shortest-route length came out within 0.2 % of the certified 42,195 m, and the start and finish lines come from the official start-area map. The physical km signs may be a few tens of metres off from the app: trust the app. Elevation comes from ~20 m terrain models, so small bumps are approximate.</p>
 <p class="muted small">Version ${version}. Map data © OpenStreetMap contributors and Overture Maps Foundation; terrain from AWS Terrain Tiles (CDEM).</p>
 `;
+}
+
+// env: {status: 'ok' | 'blocked' | 'nosignal' | 'waiting', acc, ios, chrome, firefox, android,
+// standalone}. When location works this is one line and a closed "if it gets blocked";
+// when it is blocked, the steps for this phone and browser come first, open.
+const IPHONE_BASE = `<li>Settings → Privacy &amp; Security → <b>Location Services</b>: on.</li>`;
+const STEPS = {
+  iosApp: `<p>On this iPhone, in the app from your Home Screen:</p><ol>
+${IPHONE_BASE}
+<li>Same screen, scroll down to <b>Safari Websites</b>: <b>While Using the App</b>, and <b>Precise Location</b> on. If <b>Pacer</b> is in that list too, set it the same way.</li>
+<li>Settings → Apps → Safari → <b>Location</b> (under Settings for Websites): <b>Ask</b> or <b>Allow</b>, not Deny. If this site (ulyssegagne.github.io) is listed there as Deny, change it.</li>
+<li>Come back here and tap <b>Try again</b> (the app also tries by itself when you come back). Choose <b>Allow</b> if it asks.</li>
+<li>Still blocked: close the app completely (swipe it up in the app switcher) and open it again.</li>
+<li>Still blocked here but fine in Safari: some iOS versions block location in Home Screen apps. Open the same address in Safari and use it from there on race day: everything works the same.</li>
+</ol>`,
+  iosSafari: `<p>On this iPhone, in Safari:</p><ol>
+${IPHONE_BASE}
+<li>Same screen, scroll down to <b>Safari Websites</b>: <b>While Using the App</b>, and <b>Precise Location</b> on.</li>
+<li>Back in Safari, on this page: tap the page menu in the address bar (<b>aA</b>, or the icon at the left of the address) → <b>Website Settings</b> → <b>Location</b> → <b>Allow</b>.</li>
+<li>Settings → Apps → Safari → <b>Location</b> (under Settings for Websites): <b>Ask</b> or <b>Allow</b>, not Deny.</li>
+<li>Reload the page, or tap <b>Try again</b>. Choose <b>Allow</b> if it asks.</li>
+</ol>`,
+  iosChrome: `<p>On this iPhone, in Chrome:</p><ol>
+${IPHONE_BASE}
+<li>Settings → Apps → <b>Chrome</b> → <b>Location</b>: <b>While Using the App</b>, and <b>Precise Location</b> on.</li>
+<li>In Chrome, tap the icon at the left of the address → site settings or permissions → <b>Location</b>: allow.</li>
+<li>Reload the page, or tap <b>Try again</b>.</li>
+</ol>`,
+  android: `<p>On Android:</p><ol>
+<li>Phone Settings → <b>Location</b>: on.</li>
+<li>In Chrome, tap the icon at the left of the address → <b>Permissions</b> → <b>Location</b> → <b>Allow</b> (or <b>Reset permissions</b>), then reload.</li>
+<li>From a Home Screen icon: long-press it → <b>App info</b> → Permissions → <b>Location</b> → Allow, Precise on.</li>
+<li>Settings → Apps → Chrome → Permissions → Location: <b>Allow only while using the app</b>.</li>
+</ol>`,
+  computer: `<p>On a computer:</p><ol>
+<li>Chrome or Edge: click the icon at the left of the address → Site settings → <b>Location</b> → Allow, then reload.</li>
+<li>Safari on a Mac: Safari → Settings → Websites → <b>Location</b> → this site: Allow. Also System Settings → Privacy &amp; Security → Location Services: Safari on.</li>
+<li>Firefox: click the icon at the left of the address, remove the blocked location permission, reload.</li>
+</ol>`,
+};
+const LAST_RESORT = `<p><b>Last resort</b>, if it never asks again (iPhone): Settings → Apps → Safari → Advanced → Website Data → search “github” → delete <b>ulyssegagne.github.io</b>. This also clears this app's settings (target, fuel plan) and its offline copy: do it at home on Wi-Fi, never on race morning. Then open the address in Safari, allow location, and add it to the Home Screen again.</p>`;
+
+function locationHtml(env) {
+  const mine = env.ios ? (env.chrome || env.firefox ? 'iosChrome' : env.standalone ? 'iosApp' : 'iosSafari')
+    : env.android ? 'android' : 'computer';
+  const others = ['iosApp', 'iosSafari', 'iosChrome', 'android', 'computer'].filter((k) => k !== mine).map((k) => STEPS[k]).join('');
+  const blocked = env.status === 'blocked';
+  const status = {
+    ok: `Location is on${env.acc ? ` · GPS ±${Math.round(env.acc)} m` : ''}.`,
+    blocked: 'Location is <b>blocked</b> for this app. The steps below turn it back on.',
+    nosignal: 'Location is allowed, but there is no GPS signal right now: step outside, away from tall buildings.',
+    waiting: 'Waiting for the first GPS position…',
+  }[env.status] || 'Waiting for the first GPS position…';
+  const steps = `${STEPS[mine]}${LAST_RESORT}<details class="more"><summary>Other phones and browsers</summary>${others}</details>`;
+  return `
+<h3>Location</h3>
+<p class="loc-status ${blocked ? 'bad' : env.status === 'ok' ? 'ok' : ''}">${status}</p>
+${blocked || env.status !== 'ok' ? `<button type="button" class="wide" id="loc-retry">Try again</button>` : ''}
+${blocked ? steps : `<details class="more"><summary>If location ever gets blocked</summary>${steps}</details>`}`;
 }

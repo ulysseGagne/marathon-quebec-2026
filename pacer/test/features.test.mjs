@@ -96,30 +96,31 @@ test('LIVE rehearsal route: start line 30 m ahead, official distance from there'
   assert.ok(Math.abs(p.timeAt(c.total) - (r.distance / 1000) * 255) < 1e-6);
 });
 
-test('voice when off pace: silent inside ±10 s, then every 5 s step, worse and better', () => {
+test('voice when off pace: from 10 s every 5 s step both ways, "on pace" at the ghost', () => {
   const st = { level: 0 };
   const said = [];
-  const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g); if (c) said.push(c.gap); } };
-  run([0, 3, -4, 6, 9, 9, 8, 9]);                 // within 10 s: nothing
+  const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g); if (c) said.push(c.pace ? 'pace' : c.gap); } };
+  run([0, 3, -4, 6, 9, 9, 8, 9, 1, 0]);           // no warning yet: nothing, not even "on pace"
   assert.deepEqual(said, []);
   run([10, 11, 9, 10, 12, 14]);                   // 10 behind once, no chatter around 10
   assert.deepEqual(said, [10]);
   run([15, 16, 18, 20, 23, 25]);                  // worse: 15, 20, 25
-  assert.deepEqual(said, [10, 15, 20, 25]);
   run([24, 22, 20, 19, 16, 15]);                  // better: 20, 15
-  assert.deepEqual(said, [10, 15, 20, 25, 20, 15]);
   run([16, 15, 14, 15, 16, 19]);                  // wobbling around 15: not repeated
-  assert.deepEqual(said, [10, 15, 20, 25, 20, 15]);
   run([13, 11, 10]);                              // better: 10
   assert.deepEqual(said, [10, 15, 20, 25, 20, 15, 10]);
-  run([11, 9, 8, 10, 11]);                        // wobbling around 10: not repeated
-  run([8, 6, 3, 0, -4, 5]);                       // inside: silent, no "on pace"
-  assert.deepEqual(said, [10, 15, 20, 25, 20, 15, 10]);
-  run([9, 10]);                                   // out again: 10
+  run([9, 8, 10, 9, 6, 4, 2, 1]);                 // inside: nothing yet
   assert.deepEqual(said.slice(-1), [10]);
+  run([0]);                                       // met the ghost: on pace
+  run([1, 0, -1, 3, 6, 9]);                       // after that: nothing
+  assert.deepEqual(said.slice(-2), [10, 'pace']);
   said.length = 0;
-  run([6, 0, -6, -9, -10, -12, -15, -20, -22, -20, -16, -15, -11, -10, -8, -2]); // ahead, both ways
-  assert.deepEqual(said, [-10, -15, -20, -15, -10]);
+  run([10, 8, 5, 3, 6, 9, 10]);                   // back to 3, out again: warned again
+  run([7, 4, 2, 1, -1]);                          // went past the ghost (1 to -1): on pace
+  assert.deepEqual(said, [10, 10, 'pace']);
+  said.length = 0;
+  run([-6, -9, -10, -12, -15, -20, -22, -20, -16, -15, -11, -10, -8, -3, 0]); // ahead, both ways
+  assert.deepEqual(said, [-10, -15, -20, -15, -10, 'pace']);
   said.length = 0;
   run([2, 31, -30]);                              // a jump (after a pause): the gap itself
   assert.deepEqual(said, [31, -30]);

@@ -204,6 +204,7 @@ function enterPhase(p) {
 // ---------------------------------------------------------------- GPS & compass
 function startGps() {
   if (!('geolocation' in navigator)) { S.gpsError = 'No GPS on this device'; renderChips(); return; }
+  watchPermission();
   if (S.watchId !== null) navigator.geolocation.clearWatch(S.watchId);
   S.watchId = navigator.geolocation.watchPosition(onPos, onPosError, {
     enableHighAccuracy: true, maximumAge: 0, timeout: 25000,
@@ -221,6 +222,49 @@ function onPos(pos) {
   if (Math.abs(t - now) > 10000) t = now;
   S.gpsError = null;
   handleFix({ t, lat: c.latitude, lon: c.longitude, acc: c.accuracy, speed: c.speed ?? -1, heading: c.heading });
+}
+
+// When the browser tells us location was allowed again (Settings, the site's settings),
+// start the GPS again without waiting for a reload.
+function watchPermission() {
+  if (S.permWatched || !navigator.permissions || !navigator.permissions.query) return;
+  S.permWatched = true;
+  navigator.permissions.query({ name: 'geolocation' }).then((p) => {
+    S.geoPerm = p.state;
+    p.onchange = () => {
+      S.geoPerm = p.state;
+      if (p.state !== 'denied' && S.gpsError === 'Location blocked') startGps();
+    };
+  }).catch(() => { /* not supported: the retry button and coming back to the app still work */ });
+}
+
+// What the Help sheet needs to show the right steps: how location is doing, and the phone,
+// browser and whether this is the Home Screen app.
+function helpEnv() {
+  const ua = navigator.userAgent || '';
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const fresh = S.fix && Date.now() - S.fixReal < 30000;
+  const status = S.gpsError === 'Location blocked' || S.geoPerm === 'denied' ? 'blocked'
+    : fresh ? 'ok' : S.gpsError === 'No GPS signal' ? 'nosignal' : 'waiting';
+  let standalone = false;
+  try { standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { /* ignore */ }
+  return {
+    status, acc: fresh ? S.fix.acc : null, ios, android: /Android/.test(ua), standalone,
+    chrome: /CriOS/.test(ua), firefox: /FxiOS/.test(ua),
+  };
+}
+
+// "Try again" in Help: ask for the GPS again (iOS shows its prompt if it is allowed to), then
+// show how it went.
+function retryLocation() {
+  S.gpsError = null;
+  startGps();
+  renderChips();
+  const btn = $('#loc-retry');
+  if (btn) { btn.textContent = 'Trying…'; btn.disabled = true; }
+  setTimeout(() => {
+    if (!$('#sheet-help').hidden) $('#help-body').innerHTML = helpHtml(VERSION, helpEnv());
+  }, 2500);
 }
 
 function onPosError(err) {
@@ -466,16 +510,15 @@ function runningFrame(now, dt) {
       }
     }
   }
-  // or only when off pace: silent within 10 s, then every 5 s step out and back in
+  // or only when off pace: from 10 s, every 5 s step out and back in, then "on pace" at the
+  // ghost
   const g = S.gap.state();
   if (voiceMode() === 'offpace' && d !== null && el > 30 && !r.finish && !S.resume && g.shown !== null &&
       now - (S.alertAt || 0) > 20000) {
     const cue = offPaceCue(S.alert, g.shown);
     if (cue) {
       S.alertAt = now;
-      const gc = gapClips(cue.gap);
-      words.push((estimating ? 'About ' : '') + spokenGap(cue.gap));
-      if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
+      sayCue(cue, estimating, words, clips);
     }
   }
   if (words.length && !r.finish) S.voice.say(words.join(' '), { clips: clips.length ? clips : null });
@@ -499,9 +542,17 @@ function runningFrame(now, dt) {
   if (S.mapReady) renderRunMap(now, el, d, est, dt);
 }
 
+// An off-pace cue as words and clips: "15 seconds behind", "On pace."
+function sayCue(cue, estimating, words, clips) {
+  if (cue.pace) { words.push('On pace.'); clips.push('pace'); return; }
+  const gc = gapClips(cue.gap);
+  words.push((estimating ? 'About ' : '') + spokenGap(cue.gap));
+  if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
+}
+
 // After iOS paused the app (screen locked, another app in front), say where you stand as
-// soon as GPS has placed you on the course again (when off pace only: within 10 s the
-// voice stays silent, as always).
+// soon as GPS has placed you on the course again. When off pace, the same rules as always:
+// the gap from 10 s, "on pace" if you met the ghost after a warning, else nothing.
 function catchUp(now, raw, est) {
   const R = S.resume;
   const lastFix = S.free ? S.free.lastT : S.tracker && S.tracker.lastFix;
@@ -514,10 +565,17 @@ function catchUp(now, raw, est) {
   } else if (now - R.fixAt > 3000) {
     S.resume = null;
     const g = S.gap.state().value ?? 0;
-    const quiet = voiceMode() === 'offpace' && Math.abs(Math.round(g)) < OFF_PACE.band;
-    if (!S.run.finish && raw !== null && !quiet) S.voice.say(spokenGap(g), { clips: gapClips(g) });
-    S.caughtUp = { at: now, gap: Math.round(g), quiet };
-    S.alert = { level: offPaceLevel(Math.round(g)) };
+    const shown = Math.round(g);
+    if (S.run.finish || raw === null) return;
+    if (voiceMode() !== 'offpace') {
+      S.voice.say(spokenGap(g), { clips: gapClips(g) });
+      S.caughtUp = { at: now, gap: shown, said: spokenGap(g) };
+      return;
+    }
+    const cue = offPaceCue(S.alert, shown) || (Math.abs(shown) >= OFF_PACE.band ? { gap: shown } : null);
+    const words = [], clips = [];
+    if (cue) { sayCue(cue, false, words, clips); S.voice.say(words.join(' '), { clips }); S.alertAt = now; }
+    S.caughtUp = { at: now, gap: shown, said: words.join(' ') || null };
   }
 }
 
@@ -821,7 +879,7 @@ function renderChips() {
   const chips = [];
   const fixAge = S.fix ? (Date.now() - S.fixReal) / 1000 : Infinity;
   if (S.sim) chips.push(chip('ok', 'Simulated GPS'));
-  else if (S.gpsError === 'Location blocked') chips.push(chip('bad', 'Location blocked — see Help'));
+  else if (S.gpsError === 'Location blocked') chips.push('<button class="chip tap bad" data-act="location"><span class="dot"></span>Location blocked · tap to fix</button>');
   else if (!S.fix) chips.push(chip('warn', S.gpsError || 'Waiting for GPS…'));
   else if (fixAge > 20) chips.push(chip('bad', `GPS lost ${Math.round(fixAge)} s`));
   else {
@@ -863,12 +921,14 @@ function bindUi() {
   $$('[data-open]').forEach((b) => b.addEventListener('click', () => openSheet(b.dataset.open)));
   $$('[data-close]').forEach((b) => b.addEventListener('click', closeSheets));
   $('#scrim').addEventListener('click', () => { if (!$('#sheet-menu').hidden) return; closeSheets(); });
+  $('#help-body').addEventListener('click', (e) => { if (e.target.closest('#loc-retry')) retryLocation(); });
   $('#chips').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     if (b.dataset.act === 'compass') await enableCompass();
     if (b.dataset.act === 'wake') { const ok = await S.wake.enable(); S.needWakeTap = !ok; }
     if (b.dataset.act === 'update') applyUpdate();
+    if (b.dataset.act === 'location') { openSheet('help'); return; }
     if (b.dataset.act === 'wind' && S.windSuggest) {
       const w = S.windSuggest;
       S.windSuggest = null;
@@ -992,7 +1052,7 @@ function openSheet(name) {
   if (!el) return;
   if (name === 'settings') renderSettings();
   if (name === 'plan') renderPlan();
-  if (name === 'help') $('#help-body').innerHTML = helpHtml(VERSION);
+  if (name === 'help') { $('#help-body').innerHTML = helpHtml(VERSION, helpEnv()); $('#help-body').scrollTop = 0; }
   if (name === 'practice') openPractice();
   $('#scrim').hidden = false;
   el.hidden = false;
@@ -1369,7 +1429,7 @@ function renderSettings() {
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? 'Silent while you are within 10 s of the ghost, either way. From 10 s it says the gap at every 5 s step, getting worse and getting better: “10, 15, 20 seconds behind”, then “15”, “10” as you come back; the same ahead. Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).'
+    ? 'Warnings start 10 s from the ghost, either way, then come at every 5 s step, getting worse and getting better: “10, 15, 20 seconds behind”, then “15”, “10” as you come back; the same ahead. After a warning, “on pace” the moment you meet the ghost again. Nothing else within 10 s. Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).'
     : vm === 'every'
       ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';
