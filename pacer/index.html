@@ -226,6 +226,26 @@
     <div class="sheet-body" id="plan-body"></div>
   </div>
 
+  <!-- First launch: the two permissions, one button each -->
+  <div id="sheet-welcome" class="sheet" hidden>
+    <div class="sheet-head"><h2>Before you start</h2></div>
+    <div class="sheet-body">
+      <p class="muted" id="wl-intro">Two things to turn on. Tap a button, then choose <b>Allow</b> when the iPhone asks.</p>
+      <div class="perm-row" id="wl-loc-row">
+        <div class="perm-icon"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg></div>
+        <div class="perm-text"><b>1. Location</b><span id="wl-loc-note">Needed. Puts you on the course and times you against the ghost.</span></div>
+        <button type="button" class="perm-btn" id="wl-loc">Turn on</button>
+      </div>
+      <div class="perm-row" id="wl-compass-row">
+        <div class="perm-icon"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path fill="currentColor" d="M12 4.5 14.6 12h-5.2Z"/><path fill="currentColor" opacity="0.45" d="M12 19.5 9.4 12h5.2Z"/></svg></div>
+        <div class="perm-text"><b>2. Compass</b><span id="wl-compass-note">Optional. Turns the map the way you face, before the run. The iPhone calls it “motion and orientation”.</span></div>
+        <button type="button" class="perm-btn" id="wl-compass">Turn on</button>
+      </div>
+      <button type="button" class="wide" id="wl-done">Later</button>
+      <p class="muted small">Later on: the buttons at the top of the map, or Help → Location.</p>
+    </div>
+  </div>
+
   <div id="sheet-help" class="sheet" hidden>
     <div class="sheet-head"><h2>How it works</h2><button class="x" type="button" data-close>Close</button></div>
     <div class="sheet-body prose" id="help-body"></div>

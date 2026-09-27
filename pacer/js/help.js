@@ -82,7 +82,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <h3>Race-day checklist</h3>
 <p><b>Night before</b></p>
 <ol>
-<li>Charge to 100 %. Open the app once on Wi-Fi: the chip must say <b>Works offline</b>.</li>
+<li>Charge to 100 %. Open the app once on Wi-Fi: the chip must say <b>Works offline</b>. The first time, “Before you start” asks for <b>Location</b> (needed) and the <b>Compass</b> (optional): tap each, then Allow.</li>
 <li>Settings: check your target, your <b>fuel plan</b>, and tap a Voice button to hear it with Apple Music playing. Pack the bars in the order you eat them: DECAF, DECAF, CAF, CAF (and the spare DECAF).</li>
 <li>Safari → Share → <b>Add to Home Screen</b>, and start it from there (full screen).</li>
 <li>Settings → Privacy &amp; Security → Location Services: on; Safari Websites (and the Pacer icon if listed) → While Using, <b>Precise Location on</b>.</li>

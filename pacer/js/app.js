@@ -82,12 +82,14 @@ async function boot() {
     toast('Map could not load: the number still works.');
   }
   bindUi();
-  startGps();
-  if (typeof DeviceOrientationEvent === 'undefined' || typeof DeviceOrientationEvent.requestPermission !== 'function') {
-    enableCompass(); // Android / desktop: no permission prompt
-  }
+  if (!compassNeedsTap()) enableCompass(); // Android / desktop: no permission prompt
   const saved = loadRun();
-  if (saved && !saved.stopped && clock.now() - saved.t0 < 8 * 3600e3) {
+  const resuming = saved && !saved.stopped && clock.now() - saved.t0 < 8 * 3600e3;
+  // Location: right away if it is already allowed (or blocked: then say so), or on a run;
+  // the first time, only once the welcome card has said why (its button asks).
+  const perm = await geoPermission();
+  if (resuming || onboarded() || perm === 'granted' || perm === 'denied') startGps();
+  if (resuming) {
     S.run = saved;
     setupRunObjects();
     S.track = new TrackLog(saved.id);
@@ -99,6 +101,7 @@ async function boot() {
     if (saved) clearRun();
     useCourse(S.marathon, S.readyPlan);
     enterPhase('ready');
+    maybeWelcome(perm);
   }
   loop();
   setInterval(watchdog, 5000);
@@ -203,6 +206,7 @@ function enterPhase(p) {
 
 // ---------------------------------------------------------------- GPS & compass
 function startGps() {
+  S.gpsWanted = true;
   if (!('geolocation' in navigator)) { S.gpsError = 'No GPS on this device'; renderChips(); return; }
   watchPermission();
   if (S.watchId !== null) navigator.geolocation.clearWatch(S.watchId);
@@ -220,8 +224,72 @@ function onPos(pos) {
   const now = Date.now();
   let t = pos.timestamp || now;
   if (Math.abs(t - now) > 10000) t = now;
+  const first = !S.fix;
   S.gpsError = null;
   handleFix({ t, lat: c.latitude, lon: c.longitude, acc: c.accuracy, speed: c.speed ?? -1, heading: c.heading });
+  if (first) { renderChips(); renderWelcome(); }
+}
+
+// ---- first launch: "Before you start", location and compass, one button each
+function onboarded() { try { return localStorage.getItem('pacer.onboarded') === '1'; } catch { return true; } }
+function setOnboarded() { try { localStorage.setItem('pacer.onboarded', '1'); } catch { /* ignore */ } }
+
+// 'granted', 'denied', 'prompt', or null when the browser does not say
+async function geoPermission() {
+  try {
+    if (!navigator.permissions || !navigator.permissions.query) return null;
+    return (await navigator.permissions.query({ name: 'geolocation' })).state;
+  } catch { return null; }
+}
+
+// Shown once, on the start screen, when something is left to turn on.
+function maybeWelcome(perm) {
+  if (onboarded() || S.phase !== 'ready') return;
+  if (perm === 'granted' && !compassNeedsTap()) { setOnboarded(); return; } // nothing to ask
+  $('#scrim').hidden = false;
+  $('#sheet-welcome').hidden = false;
+  renderWelcome();
+}
+
+function renderWelcome() {
+  const sheet = $('#sheet-welcome');
+  if (!sheet || sheet.hidden) return;
+  const locOn = !!S.fix, locBad = S.gpsError === 'Location blocked';
+  const locBtn = $('#wl-loc');
+  locBtn.className = `perm-btn${locOn ? ' done' : locBad ? ' bad' : ' next'}`;
+  locBtn.textContent = locOn ? 'On ✓' : locBad ? 'How to fix' : S.gpsWanted ? 'Asking…' : 'Turn on';
+  locBtn.disabled = locOn;
+  $('#wl-loc-note').textContent = locOn ? `On: GPS ±${Math.round(S.fix.acc)} m.`
+    : locBad ? 'Blocked. Help shows how to allow it again on this phone.'
+      : S.gpsWanted ? 'Choose Allow in the iPhone’s popup (“While Using the App”).'
+        : 'Needed. Puts you on the course and times you against the ghost.';
+  const needTap = compassNeedsTap();
+  $('#wl-compass-row').hidden = !needTap;
+  const cBtn = $('#wl-compass');
+  cBtn.className = `perm-btn${S.compass ? ' done' : S.compassDenied ? ' bad' : locOn ? ' next' : ''}`;
+  cBtn.textContent = S.compass ? 'On ✓' : S.compassDenied ? 'Try again' : 'Turn on';
+  cBtn.disabled = S.compass;
+  if (S.compassDenied && !S.compass) $('#wl-compass-note').textContent = 'Not allowed. Optional: the app works without it. To allow it, tap again, or close and reopen the app.';
+  $('#wl-intro').innerHTML = needTap
+    ? 'Two things to turn on. Tap a button, then choose <b>Allow</b> when the iPhone asks.'
+    : 'One thing to turn on. Tap the button, then choose <b>Allow</b> when the phone asks.';
+  const all = locOn && (S.compass || !needTap);
+  const done = $('#wl-done');
+  done.textContent = all ? 'Done' : 'Later';
+  done.className = `wide${all ? ' primary' : ''}`;
+  if (all && !S.welcomeClosing) {
+    S.welcomeClosing = true;
+    setTimeout(() => { if (!sheet.hidden) { closeWelcome(); toast('All set.', 2000); } }, 1200);
+  }
+}
+
+// Once location was asked for, the card is not shown again; "Later" without trying brings
+// it back next time.
+function closeWelcome() {
+  if (S.gpsWanted) setOnboarded();
+  $('#sheet-welcome').hidden = true;
+  $('#scrim').hidden = true;
+  renderChips();
 }
 
 // When the browser tells us location was allowed again (Settings, the site's settings),
@@ -272,6 +340,7 @@ function onPosError(err) {
   else if (err.code === 2) S.gpsError = 'No GPS signal';
   else S.gpsError = 'GPS slow';
   renderChips();
+  renderWelcome();
 }
 
 function handleFix(fix) {
@@ -305,6 +374,11 @@ function onOrient(e) {
   h = (h + so + 360) % 360;
   S.heading = S.heading === null ? h : (S.heading + angleDiff(S.heading, h) * 0.25 + 360) % 360;
   S.headingAt = Date.now();
+}
+
+// iPhone: the compass needs a tap and an Allow ("motion and orientation"); elsewhere not.
+function compassNeedsTap() {
+  return typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
 }
 
 async function enableCompass() {
@@ -353,7 +427,7 @@ function newRun(kind, mode, extra = {}) {
 async function beginRun(run) {
   S.voice.unlock();
   S.voiceUnlocked = true;
-  enableCompass();
+  if (!S.gpsWanted) startGps();
   S.wake.enable().then((m) => { if (!m) S.needWakeTap = true; });
   S.run = run;
   if (!run.sim) {
@@ -884,6 +958,7 @@ function renderChips() {
   const fixAge = S.fix ? (Date.now() - S.fixReal) / 1000 : Infinity;
   if (S.sim) chips.push(chip('ok', 'Simulated GPS'));
   else if (S.gpsError === 'Location blocked') chips.push('<button class="chip tap bad" data-act="location"><span class="dot"></span>Location blocked · tap to fix</button>');
+  else if (!S.gpsWanted) chips.push('<button class="chip tap" data-act="locate">Tap: turn on location</button>');
   else if (!S.fix) chips.push(chip('warn', S.gpsError || 'Waiting for GPS…'));
   else if (fixAge > 20) chips.push(chip('bad', `GPS lost ${Math.round(fixAge)} s`));
   else {
@@ -894,7 +969,7 @@ function renderChips() {
     if (S.offline === true) chips.push(chip('ok', 'Works offline'));
     else if (S.offline === false) chips.push(chip('warn', 'Saving for offline…'));
     if (!S.compass && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      chips.push('<button class="chip tap" data-act="compass">Tap: turn on compass</button>');
+      chips.push('<button class="chip tap" data-act="compass">Tap: compass (optional)</button>');
     }
     if (S.fix && S.course && S.course.id === 'marathon' && fixAge < 60) {
       const [la, lo] = S.course.line.latLonAt(0);
@@ -924,8 +999,24 @@ function bindUi() {
   $('#btn-live').addEventListener('click', startLive);
   $$('[data-open]').forEach((b) => b.addEventListener('click', () => openSheet(b.dataset.open)));
   $$('[data-close]').forEach((b) => b.addEventListener('click', closeSheets));
-  $('#scrim').addEventListener('click', () => { if (!$('#sheet-menu').hidden) return; closeSheets(); });
+  $('#scrim').addEventListener('click', () => {
+    if (!$('#sheet-menu').hidden) return;
+    if (!$('#sheet-welcome').hidden) { closeWelcome(); return; }
+    closeSheets();
+  });
   $('#help-body').addEventListener('click', (e) => { if (e.target.closest('#loc-retry')) retryLocation(); });
+  $('#wl-loc').addEventListener('click', () => {
+    if (S.gpsError === 'Location blocked') { closeWelcome(); openSheet('help'); return; }
+    S.gpsError = null;
+    startGps();
+    renderWelcome();
+  });
+  $('#wl-compass').addEventListener('click', async () => {
+    const ok = await enableCompass();
+    S.compassDenied = !ok;
+    renderWelcome();
+  });
+  $('#wl-done').addEventListener('click', closeWelcome);
   $('#chips').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -933,6 +1024,7 @@ function bindUi() {
     if (b.dataset.act === 'wake') { const ok = await S.wake.enable(); S.needWakeTap = !ok; }
     if (b.dataset.act === 'update') applyUpdate();
     if (b.dataset.act === 'location') { openSheet('help'); return; }
+    if (b.dataset.act === 'locate') startGps();
     if (b.dataset.act === 'wind' && S.windSuggest) {
       const w = S.windSuggest;
       S.windSuggest = null;
@@ -968,7 +1060,7 @@ function bindUi() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       S.lastPanel = {};
-      if (!S.sim && Date.now() - S.fixReal > 5000) startGps();
+      if (!S.sim && S.gpsWanted && Date.now() - S.fixReal > 5000) startGps();
       // iOS froze the app (screen locked or another app in front): no GPS, no voice, no
       // logic ran meanwhile. Catch up and say the gap as soon as GPS has you again.
       const away = S.hiddenAt ? Date.now() - S.hiddenAt : 0;
@@ -1611,6 +1703,7 @@ function bindPractice() {
 }
 
 async function openPractice() {
+  if (!S.gpsWanted) startGps();
   if (!S.practiceDraft) S.practiceDraft = { dest: null, spec: null, picking: false, waiting: false };
   renderPracticeStatic();
   $('#pr-info').textContent = 'Loading the street map…';

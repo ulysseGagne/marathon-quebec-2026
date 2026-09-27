@@ -483,19 +483,21 @@ console.log('offline reload: map', offlineOk);
 await p3.screenshot({ path: join(out, '31-offline.png') });
 if (!offlineOk) errors.push('offline reload failed');
 
-// ---- location blocked: the chip opens Help, whose first section has the steps for this
-// phone and browser, and "Try again" picks the GPS up once it is allowed
+// ---- first launch, location refused: the welcome card asks for it (not before), shows
+// "How to fix" when it is refused, which opens Help's Location section; the chip says it
+// too; "Try again" picks the GPS up once it is allowed
 const ctx4 = await browser.newContext({
   viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
   geolocation: { latitude: 46.82655, longitude: -71.24935, accuracy: 5 }, serviceWorkers: 'block',
 });
-// (headless Chromium leaves the permission prompt hanging: deny it the way iOS reports it)
+// (headless Chromium leaves the permission prompt hanging: answer it the way iOS does)
 await ctx4.addInitScript(() => {
   const real = navigator.geolocation;
   window.__geoDenied = true;
+  window.__asked = 0;
   const geo = {
-    watchPosition: (ok, err, o) => { if (window.__geoDenied) { setTimeout(() => err({ code: 1, message: 'denied' }), 50); return -1; } return real.watchPosition(ok, err, o); },
+    watchPosition: (ok, err, o) => { window.__asked++; if (window.__geoDenied) { setTimeout(() => err({ code: 1, message: 'denied' }), 50); return -1; } return real.watchPosition(ok, err, o); },
     clearWatch: (id) => { if (id !== -1) real.clearWatch(id); },
     getCurrentPosition: (ok, err, o) => real.getCurrentPosition(ok, err, o),
   };
@@ -506,19 +508,27 @@ p4.on('pageerror', (e) => errors.push(String(e)));
 await p4.goto('http://localhost:8765/pacer/');
 await p4.waitForSelector('#app.phase-ready', { timeout: 60000 });
 await sleep(1500);
-const blockedChip = await p4.textContent('#chips');
-await p4.click('[data-act="location"]');
+const first = await p4.evaluate(() => ({ shown: !document.querySelector('#sheet-welcome').hidden, intro: document.querySelector('#wl-intro').textContent, asked: window.__asked, btn: document.querySelector('#wl-loc').textContent }));
+console.log('first launch:', JSON.stringify(first));
+await p4.screenshot({ path: join(out, '39-welcome.png') });
+if (!first.shown || first.asked !== 0 || first.btn !== 'Turn on' || !/One thing/.test(first.intro)) errors.push('welcome card on first launch');
+await p4.click('#wl-loc');
+await sleep(500);
+const refused = await p4.evaluate(() => ({ btn: document.querySelector('#wl-loc').textContent, note: document.querySelector('#wl-loc-note').textContent, chips: document.querySelector('#chips').textContent }));
+console.log('location refused:', JSON.stringify(refused));
+if (refused.btn !== 'How to fix' || !/Location blocked · tap to fix/.test(refused.chips)) errors.push('welcome card: refused location');
+await p4.click('#wl-loc');
 await sleep(400);
 const helpTop = await p4.evaluate(() => ({
+  welcome: !document.querySelector('#sheet-welcome').hidden,
   first: document.querySelector('#help-body h3').textContent,
   status: document.querySelector('#help-body .loc-status').textContent,
   steps: document.querySelector('#help-body ol').textContent,
   retry: !!document.querySelector('#loc-retry'),
 }));
-console.log('location blocked:', blockedChip, '|', helpTop.first, '|', helpTop.status);
+console.log('location help:', helpTop.first, '|', helpTop.status);
 await p4.screenshot({ path: join(out, '40-location-help.png') });
-if (!/Location blocked · tap to fix/.test(blockedChip) || helpTop.first !== 'Location' || !/blocked/.test(helpTop.status) ||
-    !/Website Settings/.test(helpTop.steps) || !helpTop.retry) errors.push('location help');
+if (helpTop.welcome || helpTop.first !== 'Location' || !/blocked/.test(helpTop.status) || !/Website Settings/.test(helpTop.steps) || !helpTop.retry) errors.push('location help');
 await p4.evaluate(() => { window.__geoDenied = false; }); // allowed in Settings
 await ctx4.grantPermissions(['geolocation'], { origin: 'http://localhost:8765' });
 await p4.click('#loc-retry');
@@ -527,6 +537,58 @@ const afterRetry = await p4.evaluate(() => ({ status: document.querySelector('#h
 console.log('after Try again:', afterRetry.status, '|', afterRetry.chips);
 if (!/Location is on/.test(afterRetry.status) || /blocked/.test(afterRetry.chips)) errors.push('location retry');
 await ctx4.close();
+
+// ---- first launch on an iPhone: location and compass, one button each, each asked only
+// when tapped; it closes by itself once both are on, and does not come back
+const ctx5 = await browser.newContext({
+  viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+  geolocation: { latitude: 46.82655, longitude: -71.24935, accuracy: 5 }, permissions: ['geolocation'], serviceWorkers: 'block',
+});
+await ctx5.addInitScript(() => {
+  // what the iPhone does: location asks on first use, the compass needs a tap and an Allow
+  const real = navigator.geolocation;
+  window.__asked = 0;
+  window.__compassAsked = 0;
+  const allowed = localStorage.getItem('pacer.onboarded') === '1';
+  const geo = {
+    watchPosition: (ok, err, o) => { window.__asked++; return real.watchPosition(ok, err, o); },
+    clearWatch: (id) => real.clearWatch(id),
+    getCurrentPosition: (ok, err, o) => real.getCurrentPosition(ok, err, o),
+  };
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, get: () => geo });
+  const q = navigator.permissions.query.bind(navigator.permissions);
+  navigator.permissions.query = (d) => (d && d.name === 'geolocation' ? Promise.resolve({ state: allowed ? 'granted' : 'prompt', onchange: null }) : q(d));
+  DeviceOrientationEvent.requestPermission = () => { window.__compassAsked++; return Promise.resolve('granted'); };
+});
+const p5 = await ctx5.newPage();
+p5.on('pageerror', (e) => errors.push(String(e)));
+await p5.goto('http://localhost:8765/pacer/');
+await p5.waitForSelector('#app.phase-ready', { timeout: 60000 });
+await sleep(1200);
+const w1 = await p5.evaluate(() => ({ shown: !document.querySelector('#sheet-welcome').hidden, intro: document.querySelector('#wl-intro').textContent, asked: window.__asked, compass: !document.querySelector('#wl-compass-row').hidden }));
+if (!w1.shown || w1.asked !== 0 || !w1.compass || !/Two things/.test(w1.intro)) errors.push(`iPhone welcome: ${JSON.stringify(w1)}`);
+await p5.click('#wl-loc');
+await sleep(1500);
+const w2 = await p5.evaluate(() => ({ loc: document.querySelector('#wl-loc').textContent, next: document.querySelector('#wl-compass').className }));
+await p5.screenshot({ path: join(out, '41-welcome-location-on.png') });
+await p5.click('#wl-compass');
+await sleep(2200);
+const w3 = await p5.evaluate(() => ({ shown: !document.querySelector('#sheet-welcome').hidden, compassAsked: window.__compassAsked, flag: localStorage.getItem('pacer.onboarded'), toast: document.querySelector('#toast').textContent }));
+console.log('iPhone first launch:', JSON.stringify({ w1, w2, w3 }));
+if (w2.loc !== 'On ✓' || !/next/.test(w2.next) || w3.shown || w3.compassAsked !== 1 || w3.flag !== '1') errors.push('iPhone welcome flow');
+await p5.reload();
+await p5.waitForSelector('#app.phase-ready', { timeout: 60000 });
+await sleep(1200);
+const w4 = await p5.evaluate(() => ({ shown: !document.querySelector('#sheet-welcome').hidden, asked: window.__asked }));
+// and pressing START does not bring up the compass popup (the run does not use it)
+await p5.click('#btn-start');
+await sleep(800);
+const w5 = await p5.evaluate(() => ({ compassAsked: window.__compassAsked, phase: window.__pacer.S.phase }));
+await p5.evaluate(() => window.__pacer.stopRun());
+console.log('next launch:', JSON.stringify({ w4, w5 }));
+if (w4.shown || w4.asked < 1 || w5.compassAsked !== 0 || w5.phase !== 'running') errors.push('welcome after the first launch');
+await ctx5.close();
 
 console.log('console errors:', errors.length ? errors : 'none');
 await browser.close();

@@ -243,6 +243,20 @@ button.wide {
   position: relative; overflow: hidden;
 }
 button.wide.primary { background: #fff; color: #000; }
+/* first launch: one row per permission */
+.perm-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.perm-icon { flex: none; color: #fff; }
+.perm-text { flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.perm-text b { font: 800 18px/1.2 var(--ui); color: #fff; }
+.perm-text span { font: 500 14px/1.35 var(--ui); color: #bdbdbd; }
+.perm-btn {
+  flex: none; min-width: 96px; padding: 12px 14px; border-radius: 14px;
+  background: #1c1c1c; border: 1px solid #3a3a3a; color: #fff; font: 700 16px/1 var(--ui);
+}
+.perm-btn.next { background: #fff; color: #000; border-color: #fff; }
+.perm-btn.done { background: transparent; border-color: transparent; color: #fff; }
+.perm-btn.bad { border-color: var(--accent); color: var(--accent); }
+#wl-done { margin-top: 16px; }
 button.danger { background: #2a0d0d; border-color: #5a1a1a; color: #ff6b6b; }
 .hold, .hold5 { position: relative; overflow: hidden; touch-action: pan-y; }
 .hold::before, .hold5 .fill {
