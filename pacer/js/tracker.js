@@ -19,6 +19,15 @@ const MAX_SPEED = 7.5;      // m/s
 const REACQUIRE_AFTER = 20; // consecutive rejected fixes before a global search
 const DR_AFTER = 3;         // s without an accepted fix before dead reckoning kicks in
 const DR_SPEED_SD = 0.05;   // relative uncertainty of the dead-reckoning speed
+// Off course: well away from every part of the course, on fixes good enough to say so, for
+// long enough that it is not the GPS. In the city a fix can land 20-50 m off for a few
+// seconds (tall buildings, the tunnels' mouths); that must not count.
+const OFF_R = 40;           // m from the course, at least...
+const OFF_MARGIN = 25;      // ...and this much more than the fix's own accuracy
+const OFF_ACC = 30;         // m: less accurate fixes say nothing either way
+const OFF_AFTER = 12000;    // ms: far that long without a break
+const OFF_TUNNEL = 150;     // m: not around the tunnels (the fixes there are wild)
+const BACK_R = 25;          // m: back on course within this
 
 export class Tracker {
   /**
@@ -45,6 +54,8 @@ export class Tracker {
     this.rejected = 0;
     this.history = [];      // {t, d} of accepted estimates, last 20 min
     this.offCourse = null;  // metres from the course when we cannot lock on
+    this.off = null;        // {since, r} while clearly off the course (see OFF_*)
+    this._farSince = null;  // first of the current run of far fixes (ms)
     this.lastRaw = null;
   }
 
@@ -157,6 +168,7 @@ export class Tracker {
     const px = this.line.proj.x(lon), py = this.line.proj.y(lat);
     this.lastRaw = { t, px, py, acc };
     const sigma = Math.max(3, 0.7 * acc);
+    this._checkOff(t, px, py, acc);
 
     if (!this.x || this.rejected >= REACQUIRE_AFTER) {
       if (acc > 60) return { accepted: false, reason: 'inaccurate' };
@@ -202,6 +214,28 @@ export class Tracker {
     this._clamp();
     this._accepted(t);
     return { accepted: true, reason: 'ok' };
+  }
+
+  // Off course or back on it, from how far the fix is from the nearest part of the course.
+  // Only once the course was found (before that, offCourse says how far it is).
+  _checkOff(t, px, py, acc) {
+    if (!this.x || acc > OFF_ACC) return;
+    const near = this.line.nearest(px, py);
+    const r = near ? near.r : Infinity;
+    if (this.off) {
+      this.off.r = r;
+      if (r <= BACK_R) {
+        this.off = null;
+        this._farSince = null;
+        this.rejected = REACQUIRE_AFTER; // find where you came back: anywhere on the course
+      }
+      return;
+    }
+    const nearTunnel = (near && this.course.inTunnel(near.d, OFF_TUNNEL)) || this.course.inTunnel(this.peek(t).d, OFF_TUNNEL);
+    if (r > Math.max(OFF_R, acc + OFF_MARGIN) && !nearTunnel) {
+      if (this._farSince === null) this._farSince = t;
+      if (t - this._farSince >= OFF_AFTER) this.off = { since: this._farSince, r };
+    } else this._farSince = null;
   }
 
   _accepted(t) {

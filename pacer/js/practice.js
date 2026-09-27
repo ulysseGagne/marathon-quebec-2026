@@ -1,6 +1,7 @@
-// Practice mode: route from wherever you are to Pavillon Charles-De Koninck (or any point
-// you tap), on a bundled street graph of Québec City, fully offline. The route becomes a
-// course like the marathon: same tracker, same ghost, same even-effort pacing.
+// Practice mode: two fixed one-way routes, Sommet 3V (home) to Pavillon Charles-De Koninck
+// (DKN) and back the other way, found on a bundled street graph of Québec City, fully
+// offline. The route becomes a course like the marathon: same tracker, same ghost, same
+// even-effort pacing.
 import { haversine, lineFromLatLon } from './geo.js';
 import { gaussianSmooth } from './model.js';
 
@@ -269,11 +270,15 @@ export class Dem {
   }
 }
 
+// The practice routes, one way each: [from, to] in data/practice-places.json
+export const PRACTICE_ROUTES = [
+  { id: 'home-dkn', from: 'home', to: 'dkn' },
+  { id: 'dkn-home', from: 'dkn', to: 'home' },
+];
+
 // Course spec (same shape as data/course.json) from a route polyline.
-export function practiceSpec(latlon, dem, { name = 'Practice', outAndBack = false } = {}) {
-  let pts = latlon;
-  if (outAndBack) pts = latlon.concat(latlon.slice(0, -1).reverse());
-  const line = lineFromLatLon(pts);
+export function practiceSpec(latlon, dem, { name = 'Practice' } = {}) {
+  const line = lineFromLatLon(latlon);
   const total = line[line.length - 1][2];
   const step = 10;
   const n = Math.ceil(total / step) + 1;
@@ -295,8 +300,6 @@ export function practiceSpec(latlon, dem, { name = 'Practice', outAndBack = fals
     profile: { d0: 0, step, ele: Array.from(smooth, (v) => +v.toFixed(2)) },
     tunnels: [],
     aid: [],
-    outAndBack,
-    turnD: outAndBack ? line[latlon.length - 1][2] : null,
   };
 }
 
@@ -309,7 +312,6 @@ export function withStartLine(spec, lead = 30) {
     distance: +(spec.distance - lead).toFixed(1),
     line: spec.line.map(([la, lo, d]) => [la, lo, +(d - lead).toFixed(1)]),
     profile: { ...spec.profile, d0: spec.profile.d0 - lead },
-    turnD: spec.turnD == null ? null : spec.turnD - lead,
     startLead: lead,
   };
 }

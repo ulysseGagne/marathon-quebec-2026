@@ -28,29 +28,41 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p><b>LIVE</b> (recommended): nothing to time yourself.</p>
 <ol>
 <li>Around 7:45 in the corral, press LIVE (it works from 5:00). The number counts down to 8:00:00 (phone time) and so does the voice, to tell you it is working: “Start in 10 minutes”… every 5 minutes from half an hour before, every minute from 10, then 2 and a half, 2, a minute and a half, 1, 45, 30 and 15 seconds. <b>Check</b> (top left) shows everything at a glance.</li>
-<li>At 8:00:00 the voice says “Gun time” and the clock starts by itself (LIVE · GUN 8:00:00). It stays quiet about the gap until chip time takes over.</li>
-<li>About 15 s after you run over the start line, the voice says “Chip time” and the label becomes LIVE · CHIP with the time you crossed, to the second. From then on the exact moment of the gun no longer matters.</li>
+<li>At 8:00:00 the voice says “<b>Gun time: 8 a.m. exactly</b>” and the clock starts by itself (LIVE · GUN 8:00:00). It stays quiet about the gap until chip time takes over.</li>
+<li>About 15 s after you run over the start line, the voice says your chip time to the second, “<b>Chip time: 8 a.m. and 40 seconds</b>”, and the label becomes LIVE · CHIP 8:00:40. From then on the exact moment of the gun no longer matters.</li>
 </ol>
 <p><b>How it finds your crossing:</b> not when you reach the line, but when you leave it for good. Standing at the line, GPS drift moves you back and forth across it by a few metres; that does not count. It counts once you are 60 m past the line, and takes the moment you crossed it on the way, from the GPS points on either side (one a second). If GPS had put you just past the line while you stood there, it takes the moment you started moving. It looks from 30 s before the gun, so leaving at 7:59:55 counts. In simulations of standing right at the line for 10 minutes, then starting, it was within 2 s every time (half a second typically). If it never sees a crossing, it stays on gun time: off by your few seconds to the line, on the safe side.</p>
-<p>Pressed LIVE only after starting to run? It still counts from 8:00:00 and finds your start-line crossing in the last 20 minutes if the app was open.</p>
-<p>Try it this week: <b>Practice → LIVE rehearsal</b> runs the same thing on your practice route, with the gun one minute after you press it (the voice says “Go!”) and a start line 30 m ahead of where you stand.</p>
-<p>Tapped START too early or too late? Hold the <b>gear</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”. The label at the top right then says CHIP and the time you crossed.</p>
+<p>Pressed LIVE only after starting to run? It counts from the gun and says so, “Gun time: 8 a.m. exactly” (or the gun time set in Settings, if you moved it), and still finds your start-line crossing in the last 20 minutes if the app was open. Started later in the race, it stays on gun time. <b>START</b> says the time you tapped: “Start time: 8:03 a.m. and 12 seconds”.</p>
+<p>Try it this week: <b>Practice → LIVE rehearsal</b> runs the same thing on your practice route, with the gun one minute after you press it (the voice says “Go!”) and a start line 30 m along the route.</p>
+<p>Tapped START too early or too late? Hold the <b>gear</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”. The label at the top right then says CHIP and the time you crossed, and the voice says it.</p>
 
 <h3>Very hard to stop</h3>
-<p>Nothing on the running screen reacts to a tap. Hold the bottom row (the <b>gear</b>) for <b>5 seconds</b> to open the run menu: a bar fills across the row and the line above counts down; let go early and nothing happens. Every change in the menu needs a 1-second hold, and stopping needs a 5-second hold. If the page reloads, crashes or gets swiped away, open it again: the run continues from the saved start time.</p>
+<p>Nothing on the running screen reacts to a tap. Three things take a long hold, and while you hold, a fill slides across the whole screen with a countdown; let go early (or slide your finger) and nothing happens:</p>
+<ul>
+<li>the bottom row (the <b>gear</b>), <b>5 seconds</b>: the run settings;</li>
+<li>the <b>map</b>, <b>5 seconds</b>: the map unlocks (below);</li>
+<li><b>End run</b> in the run settings, <b>10 seconds</b>, in red.</li>
+</ul>
+<p>Every change in the run settings needs a 1-second hold. If the page reloads, crashes or gets swiped away, open it again: the run continues from the saved start time.</p>
+
+<h3>Lost? Unlock the map</h3>
+<p>Hold the map 5 seconds: it stops following you, lies flat with north up, and you can drag and pinch it to find your way; you are where the GPS says. The ◎ button (bottom right of the map) follows you again.</p>
+
+<h3>Off course</h3>
+<p>When you are clearly off the course (a wrong turn), the voice says “<b>Off course: 90 meters from the course</b>” (again past 100 m, 200 m, 500 m, 1 km), the number shows how far (“90 m”, OFF COURSE), and the map shows where the GPS has you, flat, with the course in view. There is no gap until you are back on it; then “<b>Back on course</b>”, and the gap is measured from where you rejoined. It only counts once you are more than 40 m from every part of the course (and well beyond the GPS's own error) for 12 seconds straight, and never around the tunnels: in the city a GPS point can land 20 to 50 m off for a few seconds, and that is not you. In simulated races with tunnels, stray points and a poorer GPS it never went off.</p>
 
 <h3>Tunnel Joseph-Samson</h3>
 <p>Km 10.7–11.3 and km 36.2–36.7: about 580 m each time without GPS. The number keeps going (with ~) and catches up after the exit.</p>
 
 <h3>Voice</h3>
-<p><b>When off pace</b> (default): warnings start 5 s from the ghost, either way, then come at every 5 s step as the gap gets worse and as it gets better: “5 seconds behind”, “10”, “15”… then “10”, “5” as you come back. Right after a warning, it says “<b>on pace</b>” the moment you meet the ghost again, and only then: drifting 2 s off and back says nothing. The same ahead: “5 seconds ahead”… then “on pace” when the ghost catches you. A wobble around a step is not repeated. In simulated races with a runner who glances at the number and eases back, that is about one call every 10 minutes (a “5 seconds behind” and later its “on pace”), and you stay within 5 s about 90 % of the time. Settings → Voice → “Warn from 10 s” if you want it quieter.</p>
-<p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run menu. In the tunnel it says “about…”.</p>
-<p>In every mode but off it also says “<b>Take caffeinated bar</b>” or “<b>Take regular bar</b>” at your bars (1 km before an aid station), “<b>Water in 200 meters</b>” before every aid station (“<b>Gel in 200 meters</b>” at km 15.1 and 27), and “chip time” at the start line in LIVE. Nothing else.</p>
+<p><b>When off pace</b> (default): warnings start 5 s from the ghost, either way, then come as the gap gets worse at 10, 15, 20, 25, 30, 45 seconds, 1 minute, 90 seconds, 2, 3, 4 and 5 minutes (nothing past 5 minutes), and as it gets better at the step below the last one: after “45 seconds behind”, “30”, then “25”, “20”… “5” as you come back. Right after a warning, it says “<b>on pace</b>” the moment you meet the ghost again, and only then: drifting 2 s off and back says nothing. The same ahead: “5 seconds ahead”… then “on pace” when the ghost catches you. A wobble around a step is not repeated. In simulated races with a runner who glances at the number and eases back, that is about one call every 10 minutes (a “5 seconds behind” and later its “on pace”), and you stay within 5 s about 90 % of the time. Settings → Voice → “Warn from 10 s” if you want it quieter.</p>
+<p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run settings (hold the gear). In the tunnel it says “about…”.</p>
+<p>In every mode but off it also says “<b>Take caffeinated bar</b>” or “<b>Take regular bar</b>” at your bars (1 km before an aid station), “<b>Water in 200 meters</b>” before every aid station (“<b>Gel in 200 meters</b>” at km 15.1 and 27), the gun, chip or start time to the second, and “off course” when you are. Nothing else.</p>
 <p><b>With Apple Music</b>: the voice is the iPhone's own. The music gets quieter while it talks and comes back right after. It speaks with the side switch on silent too, and Do Not Disturb keeps calls quiet.</p>
 
 <h3>Screen off, pocket mode</h3>
 <p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds; in “when off pace”, only if you are 5 s or more off, or “on pace” if you met the ghost after a warning). The app keeps the screen from locking by itself.</p>
-<p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks when off pace.</p>
+<p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run settings): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. Whenever it goes black, the run settings close, so a touch in the pocket cannot change anything. If the voice was off, pocket mode speaks when off pace.</p>
 
 <h3>Fuel: bars and gels</h3>
 <p>The suggested plan (Settings → Fuel): one bar before the start, four on the course, and both race gels. A fuel stop every 21 to 29 minutes from km 4.8 to km 31.9.</p>
@@ -75,7 +87,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 
 <h3>Practice this week</h3>
 <ol>
-<li><b>Practice</b> builds a route from where you stand to Pavillon Charles-De Koninck (DKN), or to any point you tap on the map. Choose there and back or one way, and the ghost's average pace.</li>
+<li><b>Practice</b> has two routes, one way each: <b>Sommet → DKN</b> (Sommet 3V, 937 avenue Roland-Beaudin, to Pavillon Charles-De Koninck) and <b>DKN → Sommet</b>, 2.8 km on the streets. Standing at one end picks the route that starts there; it says so if you are far from the start. Choose the ghost's average pace.</li>
 <li>Same screen and same ghost logic as race day, including even effort on the hills.</li>
 <li><b>Free run</b> works anywhere without a route (distance from GPS, so it drifts like a normal app — it is only for trying the display).</li>
 </ol>

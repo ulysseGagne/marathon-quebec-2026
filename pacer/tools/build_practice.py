@@ -32,7 +32,12 @@ BBOX = (-71.42, 46.71, -71.14, 46.88)
 RUNNABLE = {"primary": 1.12, "secondary": 1.08, "tertiary": 1.03, "residential": 1.0, "unclassified": 1.0,
             "living_street": 1.0, "service": 1.08, "pedestrian": 1.0, "footway": 1.0, "cycleway": 1.0,
             "path": 1.05, "track": 1.15, "steps": 3.0, "unknown": 1.1}
-DEST = {"name": "Pavillon Charles-De Koninck (DKN), Université Laval", "lat": 46.781223, "lon": -71.274954}
+# The two ends of the practice routes. Sommet 3V: the address point of 937 avenue
+# Roland-Beaudin in Overture Maps' addresses.
+PLACES = {
+    "home": {"name": "Sommet 3V", "short": "Sommet", "full": "Sommet 3V, 937 avenue Roland-Beaudin", "lat": 46.772259, "lon": -71.299061},
+    "dkn": {"name": "DKN", "short": "DKN", "full": "Pavillon Charles-De Koninck (DKN), Université Laval", "lat": 46.781223, "lon": -71.274954},
+}
 
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -210,4 +215,4 @@ if __name__ == "__main__":
     overture, cache, out_dir = sys.argv[1], sys.argv[2], sys.argv[3]
     build_graph(overture, f"{out_dir}/practice-graph.bin")
     build_dem(cache, f"{out_dir}/practice-dem.bin")
-    json.dump(DEST, open(f"{out_dir}/practice-dest.json", "w"), ensure_ascii=False)
+    json.dump(PLACES, open(f"{out_dir}/practice-places.json", "w"), ensure_ascii=False)

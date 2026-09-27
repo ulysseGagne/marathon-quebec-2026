@@ -36,12 +36,14 @@ function tunnelDepth(course, d) {
  *   wobble      amplitude of a 7-minute pace oscillation
  *   gpsSigma    GPS error (m), correlated over gpsTau seconds
  *   outlierRate share of fixes thrown 30-90 m off
+ *   detour      {from, to, off}: between those official distances the runner is `off`
+ *               metres to the side of the course (a parallel street), in and out over 40 m
  */
 export function* simulate(course, plan, opts = {}) {
   const {
     startMs = Date.UTC(2026, 9, 4, 12, 0, 0), fromD = 0, dt = 1, seed = 1, gpsSigma = 4,
     gpsTau = 25, outlierRate = 0.01, bias = 0, wobble = 0.03, tunnels = true, preStartS = 0,
-    lateral = 2.5, stopAt = null, speedFactor = null,
+    lateral = 2.5, stopAt = null, speedFactor = null, detour = null,
   } = opts;
   const rnd = mulberry32(seed);
   const line = course.line;
@@ -71,7 +73,9 @@ export function* simulate(course, plan, opts = {}) {
     const dClamped = Math.max(line.d0, Math.min(dPos, line.d1));
     const [x0, y0] = line.xyAt(dClamped);
     const b = (line.bearingAt(dClamped, 5, 5) * Math.PI) / 180;
-    const x = x0 + Math.cos(b) * lat, y = y0 - Math.sin(b) * lat;
+    const side = lat + (detour && dPos > detour.from && dPos < detour.to
+      ? detour.off * Math.min(1, (dPos - detour.from) / 40, (detour.to - dPos) / 40) : 0);
+    const x = x0 + Math.cos(b) * side, y = y0 - Math.sin(b) * side;
     let fix = null;
     const depth = tunnels ? tunnelDepth(course, dPos) : -1;
     if (depth > 15) {

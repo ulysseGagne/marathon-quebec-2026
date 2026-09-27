@@ -1,7 +1,7 @@
 // Service worker: everything the pacer needs is cached on first visit, so it works with
 // no connection at all. A new version takes over as soon as it is fully downloaded; the
 // page reloads onto it by itself unless a run is going (then on the next launch).
-const VERSION = 'bf866b99d6fe';
+const VERSION = 'dc6dca8cab56';
 const CACHE = `pacer-${VERSION}`;
 const ASSETS = [
   "./",
@@ -44,7 +44,7 @@ const ASSETS = [
   "data/basemap.pmtiles",
   "data/practice-graph.bin",
   "data/practice-dem.bin",
-  "data/practice-dest.json"
+  "data/practice-places.json"
 ];
 
 async function precache() {

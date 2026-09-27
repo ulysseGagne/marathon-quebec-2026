@@ -6,7 +6,7 @@ import { Tracker } from '../js/tracker.js';
 import { spokenGap, offPaceCue, offPaceConfig } from '../js/gap.js';
 import { parseBars, fmtBars, SUGGESTED_BARS } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
-import { mulberry32, gauss } from '../js/sim.js';
+import { mulberry32, gauss, simulate } from '../js/sim.js';
 import { raceWind, forecastUrl } from '../js/weather.js';
 
 const spec = JSON.parse(readFileSync(new URL('../data/course.json', import.meta.url)));
@@ -89,7 +89,7 @@ test('bars: km list typed in Settings, c for caffeine', () => {
 test('LIVE rehearsal route: start line 30 m ahead, official distance from there', () => {
   const pts = [];
   for (let i = 0; i <= 40; i++) pts.push([46.78 + i * 0.0003, -71.28]);
-  const base = practiceSpec(pts, null, { name: 'Test', outAndBack: true });
+  const base = practiceSpec(pts, null, { name: 'Test' });
   const r = withStartLine(base, 30);
   assert.equal(r.line[0][2], -30);
   assert.ok(Math.abs(r.distance - (base.distance - 30)) < 0.2);
@@ -120,7 +120,7 @@ test('voice when off pace, from 5 s (default): "on pace" only right after a warn
   assert.deepEqual(said.slice(-3), [5, 5, 'pace']);
 });
 
-test('voice when off pace, from 10 s: every 5 s step both ways, "on pace" at the ghost', () => {
+test('voice when off pace, from 10 s: each step both ways, "on pace" at the ghost', () => {
   const st = { level: 0 };
   const said = [];
   const cfg = offPaceConfig(10);
@@ -149,6 +149,73 @@ test('voice when off pace, from 10 s: every 5 s step both ways, "on pace" at the
   said.length = 0;
   run([2, 31, -30]);                              // a jump (after a pause): the gap itself
   assert.deepEqual(said, [31, -30]);
+});
+
+test('voice when off pace: the ladder 5 … 30, 45, 1 min, 90 s, 2 … 5 min, both ways, nothing past 5 min', () => {
+  for (const sign of [1, -1]) {
+    const st = { level: 0 };
+    const said = [];
+    const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, sign * g); if (c) said.push(c.pace ? 'pace' : sign * c.gap); } };
+    const up = [], down = [];
+    for (let g = 0; g <= 420; g++) up.push(g);
+    for (let g = 420; g >= 0; g--) down.push(g);
+    run(up);
+    assert.deepEqual(said, [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240, 300]);
+    said.length = 0;
+    run(down);
+    assert.deepEqual(said, [240, 180, 120, 90, 60, 45, 30, 25, 20, 15, 10, 5, 'pace']);
+    said.length = 0;
+    run([30, 40, 44, 40, 31, 35, 44]);               // between 30 and 45: nothing after "30"
+    assert.deepEqual(said, [30]);
+    run([45, 40, 31, 30]);                           // 45, then back to 30
+    assert.deepEqual(said, [30, 45, 30]);
+  }
+  // from 10 s: the same ladder from 10
+  const st = { level: 0 };
+  const said = [];
+  for (let g = 0; g <= 100; g++) { const c = offPaceCue(st, g, offPaceConfig(10)); if (c) said.push(c.gap); }
+  assert.deepEqual(said, [10, 15, 20, 25, 30, 45, 60, 90]);
+});
+
+// Runs a simulated race through a tracker; returns when "off course" came and went (s).
+function offRun(c, opts) {
+  const plan = c.plan({ target: (c.total / 1000) * 255 });
+  const start = Date.UTC(2026, 9, 4, 12, 0, 0);
+  const tr = new Tracker(c, { hint: (t) => ({ d: plan.distAt(Math.max(0, (t - start) / 1000)), v: 4, sd: 300 }), plan: () => plan });
+  const spans = [];
+  let on = null, maxR = 0, errAfter = 0;
+  for (const { fix, truth, tMs } of simulate(c, plan, { startMs: start, ...opts })) {
+    if (fix) tr.update(fix);
+    if (tr.off && on === null) on = truth.t;
+    if (tr.off) maxR = Math.max(maxR, tr.off.r);
+    if (!tr.off && on !== null) { spans.push([on, truth.t]); on = null; }
+    if (opts.checkAfter && truth.d > opts.checkAfter && tr.tracking && !tr.off) errAfter = Math.max(errAfter, Math.abs(tr.peek(tMs).d - truth.d));
+  }
+  if (on !== null) spans.push([on, Infinity]);
+  return { spans, maxR, errAfter };
+}
+
+test('off course: never on a normal marathon (tunnels, stray fixes, a poorer GPS)', () => {
+  for (const [seed, gpsSigma, outlierRate] of [[1, 4, 0.01], [2, 4, 0.03], [3, 8, 0.02], [4, 10, 0.01]]) {
+    const { spans } = offRun(course, { seed, gpsSigma, outlierRate });
+    assert.deepEqual(spans, [], `seed ${seed} (GPS ±${gpsSigma} m): off course at ${JSON.stringify(spans)}`);
+  }
+});
+
+test('off course: a wrong turn 90 m off is caught in ~15 s; a street 30 m off is not', () => {
+  const c = new Course(withStartLine(practiceSpec(Array.from({ length: 81 }, (_, i) => [46.77 + i * 0.0004, -71.30 + 0.002 * Math.sin(i / 8)]), null, { name: 'T' }), 0));
+  const wrong = offRun(c, { seed: 3, detour: { from: 1000, to: 1800, off: 90 }, checkAfter: 1900 });
+  assert.equal(wrong.spans.length, 1, JSON.stringify(wrong.spans));
+  const [a, b] = wrong.spans[0];
+  // 40 m out is reached ~12 s after leaving at km 1 (4 m/s): flagged 12 s after that
+  const out = 1000 / 4;
+  console.log(`   90 m detour: off course from ${(a - out).toFixed(0)} s after the turn, back ${(b - 1800 / 4).toFixed(0)} s after rejoining, max ${wrong.maxR.toFixed(0)} m; then within ${wrong.errAfter.toFixed(0)} m`);
+  assert.ok(a - out > 10 && a - out < 30, `flagged ${a - out} s after the turn`);
+  assert.ok(b - 1800 / 4 < 15 && b - 1800 / 4 > -15);
+  assert.ok(wrong.maxR > 75 && wrong.maxR < 110);
+  assert.ok(wrong.errAfter < 30, `after rejoining: ${wrong.errAfter} m`);
+  const near = offRun(c, { seed: 4, detour: { from: 1000, to: 1800, off: 30 } });
+  assert.deepEqual(near.spans, []);
 });
 
 test('wind forecast: race hours averaged, direction averaged as vectors (north wraps)', () => {

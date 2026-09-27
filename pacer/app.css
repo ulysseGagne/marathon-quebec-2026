@@ -175,13 +175,6 @@ button:disabled { opacity: 0.4; }
   display: flex; align-items: flex-end; justify-content: space-between; gap: 6px;
   padding-top: 2px; border-top: 2px solid currentColor;
 }
-/* holding the bottom row for the menu: a thick bar fills across it over 5 s */
-#info::before {
-  content: ""; position: absolute; left: 0; top: -2px; height: 10px; border-radius: 0 5px 5px 0;
-  width: calc(var(--hold, 0) * 100%); background: currentColor; pointer-events: none;
-}
-#run.holding #info .cell:not(.handle) { opacity: 0.45; }
-#run.holding #status-line { font-size: 24px; line-height: 28px; min-height: 28px; opacity: 1; }
 #info .cell { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 #info .lbl { font: 800 11px/1.3 var(--ui); letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.72; }
 #info .val { font: 700 30px/1 var(--cond); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
@@ -266,14 +259,13 @@ button.wide.primary { background: #fff; color: #000; }
 .chk.info .chk-i { color: var(--muted); }
 .chk-time { font: 700 17px/1.3 var(--ui); color: #fff; margin: 2px 0 6px; }
 button.danger { background: #2a0d0d; border-color: #5a1a1a; color: #ff6b6b; }
-.hold, .hold5 { position: relative; overflow: hidden; touch-action: pan-y; }
-.hold::before, .hold5 .fill {
+.hold { position: relative; overflow: hidden; touch-action: pan-y; }
+.hold::before {
   content: ""; position: absolute; left: 0; top: 0; bottom: 0;
   width: calc(var(--p, 0) * 100%); background: rgba(255, 255, 255, 0.28); pointer-events: none;
 }
-.hold5 .fill { background: rgba(255, 60, 60, 0.45); }
 .primary.hold::before { background: rgba(0, 0, 0, 0.28); }
-.hold5 .t { position: relative; }
+#btn-stop { touch-action: pan-y; }
 .menu-row { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
 .menu-label { font: 700 14px/1.2 var(--ui); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .info-box { background: #161616; border: 1px solid #2a2a2a; border-radius: 12px; padding: 10px 12px; min-height: 44px; }
@@ -328,6 +320,23 @@ table.splits tr.down td.pace { color: var(--muted); }
 }
 #pocket .pk-title { font: 800 22px/1 var(--cond); letter-spacing: 0.3em; color: #4a4a4a; }
 #pocket .pk-sub { font: 600 15px/1.2 var(--ui); color: #3c3c3c; }
+
+/* a long hold (settings, map, end run): a fill slides across the whole screen with a
+   countdown; the label is drawn twice, white on the dark part, black on the fill */
+#holdfx { position: fixed; inset: 0; z-index: 35; pointer-events: none; background: rgba(0, 0, 0, 0.78); --p: 0; }
+#holdfx.danger { background: rgba(70, 0, 0, 0.85); }
+#holdfx .hf-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p) * 100%); overflow: hidden; background: var(--hf, #fff); }
+#holdfx .hf-in {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 100vw;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  padding: var(--st) 24px var(--sb); text-align: center; color: #fff;
+}
+#holdfx .hf-fill .hf-in { color: #000; }
+#holdfx .hf-title { font: 800 48px/1 var(--cond); letter-spacing: 0.2em; padding-left: 0.2em; text-transform: uppercase; }
+#holdfx .hf-count { font: 800 min(46vw, 34vh)/0.82 var(--cond); font-variant-numeric: tabular-nums; }
+#holdfx .hf-sub { font: 700 18px/1.3 var(--ui); }
+/* on the run the map is held, not scrolled (until it is unlocked) */
+#app.phase-running #map { touch-action: none; }
 
 #toast {
   position: fixed; left: 50%; top: calc(var(--st) + 56px); transform: translateX(-50%); z-index: 40;

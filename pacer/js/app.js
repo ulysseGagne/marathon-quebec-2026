@@ -6,7 +6,7 @@ import { Tracker } from './tracker.js';
 import { GapDisplay, fmtGap, spokenGap, offPaceCue, offPaceLevel, offPaceConfig } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
-import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
+import { Graph, Dem, practiceSpec, withStartLine, PRACTICE_ROUTES } from './practice.js';
 import { FreeRun } from './freerun.js';
 import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseBars, fmtBars, SUGGESTED_BARS } from './store.js';
 import { Wake } from './wake.js';
@@ -46,9 +46,10 @@ const S = {
   resume: null,          // catching up after iOS paused the app
   hiddenAt: 0,
   peekUntil: 0,          // pocket mode: screen shown until then (ms)
-  holdMsg: null,         // status line text while the menu is being held open
+  freeMap: false,        // the map unlocked (5 s hold on it): no following, flat, draggable
+  offNow: null,          // {r} while clearly off the course
   offline: null, updateReady: false,
-  graph: null, dem: null, dest: null,
+  graph: null, dem: null, places: null,
   practiceDraft: null,
   sim: null,
   lastPanel: {},
@@ -162,6 +163,8 @@ function setupRunObjects() {
   S.lastBar = null;
   S.lastWater = null;
   S.countdownAt = null;
+  S.offSaid = null;
+  S.rawTrail = [];
   S.resume = null;
   S.peekUntil = 0;
   S.lastTrailN = 0;
@@ -185,14 +188,16 @@ function setupRunObjects() {
 // ---------------------------------------------------------------- phases
 function enterPhase(p) {
   S.phase = p;
-  setCompassListening(p !== 'running');
   const app = $('#app');
   app.classList.remove('phase-boot', 'phase-ready', 'phase-running');
   app.classList.add(`phase-${p}`);
   closeSheets();
+  S.freeMap = false;
+  S.offNow = null;
   if (S.mapReady) S.map.setInteractive(p === 'ready');
   $('#btn-recenter').hidden = p !== 'ready';
   $('#btn-overview').hidden = p !== 'ready';
+  updateCompass();
   S.lastPanel = {};
   if (p === 'ready') {
     S.follow = true;
@@ -237,7 +242,7 @@ function renderCheck() {
   const toGun = (g - now) / 1000;
   // the clock
   if (r && r.kind === 'race' && r.mode === 'live' && now < r.t0) {
-    add('ok', `<b>LIVE is on.</b> The clock starts by itself at the ${fmtTimeOfDay(g, true)} gun, then switches to your chip time when you cross the start line. The voice counts down, then says “Gun time”, and “Chip time” about 15 s after you cross.`);
+    add('ok', `<b>LIVE is on.</b> The clock starts by itself at the ${fmtTimeOfDay(g, true)} gun, then switches to your chip time when you cross the start line. The voice counts down, then says the gun time (“Gun time: ${spokenTimeOfDay(g)}”), and your chip time (“Chip time: …”) about 15 s after you cross.`);
   } else if (r && r.kind === 'race') {
     add('ok', `<b>Running</b> since ${fmtTimeOfDay(r.t0, true)} (${{ chip: 'your start-line crossing', gun: 'the gun: chip time when you cross the line', tap: 'your START tap', adjusted: 'adjusted by hand' }[r.t0Source] || r.t0Source}).`);
   } else if (toGun > 0 && toGun < 3 * 3600) {
@@ -399,13 +404,19 @@ function onPosError(err) {
 function handleFix(fix) {
   S.fix = fix;
   S.fixReal = Date.now();
+  // the last 20 s of good fixes, for your direction of travel off the course
+  if (fix.acc <= 30) {
+    const tr = S.rawTrail || (S.rawTrail = []);
+    tr.push(fix);
+    while (tr.length && fix.t - tr[0].t > 20000) tr.shift();
+  }
   if (S.tracker) S.tracker.update(fix);
   if (S.free && S.phase === 'running') S.free.update(fix);
   if (S.run && S.track && !S.run.sim) {
     const est = S.tracker ? S.tracker.peek(fix.t) : S.free ? { d: S.free.d } : null;
     S.track.add(fix.t, fix.lat, fix.lon, fix.acc, est ? est.d : null);
   }
-  if (S.practiceDraft && S.practiceDraft.waiting) buildPracticeRoute();
+  if (S.practiceDraft && S.practiceDraft.needFix) renderPracticeInfo();
 }
 
 function watchdog() {
@@ -442,14 +453,19 @@ async function enableCompass() {
       if (r !== 'granted') return false;
     }
     S.compass = true;
-    setCompassListening(S.phase !== 'running');
+    updateCompass();
     renderChips();
     return true;
   } catch { return false; }
 }
 
-// The compass fires ~60 events a second. It only turns the view on the start screen; on
-// the run the map turns with the course, so it is switched off there to save battery.
+// The compass fires ~60 events a second. It turns the view on the start screen; on the run
+// the map turns with the course, so it is off there to save battery, except to show which
+// way you face when you are off the course or have unlocked the map.
+function updateCompass() {
+  setCompassListening(S.phase !== 'running' || S.freeMap || !!S.offNow);
+}
+
 function setCompassListening(on) {
   on = !!(on && S.compass);
   if (on === !!S.compassListening) return;
@@ -491,11 +507,13 @@ async function beginRun(run) {
   } else S.track = null;
   setupRunObjects();
   enterPhase('running');
+  // the time the clock counts from, to the second: "Start time: 8:04 a.m. and 12 seconds";
+  // LIVE after the gun (started mid-race): "Gun time: 8 a.m. exactly" (the gun as set in
+  // Settings)
   const early = clock.now() < run.t0;
   if (run.rehearsal) S.voice.say('Live rehearsal. The gun is in one minute.');
-  else if (early) S.voice.say('Live mode. Waiting for the gun.');
-  else if (run.kind === 'race') S.voice.say('Go. Pacer running.');
-  else S.voice.say('Go.');
+  else if (early) S.voice.say(`Live mode. The gun is at ${spokenTimeOfDay(run.t0)}.`);
+  else S.voice.say(`${run.t0Source === 'gun' ? 'Gun time' : 'Start time'}: ${spokenTimeOfDay(run.t0)}.`);
 }
 
 function startManual() {
@@ -577,7 +595,8 @@ function readyFrame(now, dt) {
   }
   const start = S.course ? S.course.line.latLonAt(0) : null;
   const nearStart = fresh && start && haversine(fix.lat, fix.lon, start[0], start[1]) < 1500;
-  if (S.follow && fresh && (nearStart || S.course?.id === 'practice')) {
+  // (while the practice sheet shows a route, the whole route stays in view)
+  if (S.follow && fresh && nearStart && !S.practiceDraft) {
     const target = S.compass && S.heading !== null ? S.heading : 0;
     S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 0.6);
     S.map.follow({ lat: fix.lat, lon: fix.lon, bearing: S.cam.bearing, zoom: 16.2, pitch: 45 });
@@ -595,10 +614,19 @@ function runningFrame(now, dt) {
   const el = (now - r.t0) / 1000;
   let est = null;
   let d = null;
+  // Clearly off the course (a wrong turn): no place on the course, so no gap, no calls; the
+  // map shows where the GPS has you. Back on it: the gap starts over from where you are.
+  const off = !S.free && S.tracker && S.tracker.tracking ? S.tracker.off : null;
+  if (!!off !== !!S.offNow) {
+    S.offNow = off;
+    if (!off) S.gap.reset();
+    updateCompass();
+    S.lastPanel.cls = null;
+  } else if (off) S.offNow = off;
   if (S.free) {
     const f = S.free.peek(now);
     if (f) { est = f; d = f.d; }
-  } else if (S.tracker && S.tracker.tracking) {
+  } else if (S.tracker && S.tracker.tracking && !off) {
     est = S.tracker.peek(now);
     d = est.d;
   }
@@ -613,13 +641,14 @@ function runningFrame(now, dt) {
   if (S.resume) catchUp(now, raw, est);
   // LIVE: count down to the gun out loud, so you know it is running ("Start in 5 minutes"
   // … "15 seconds"), then "Gun time" (the rehearsal says "Go!": there is no real gun)
-  if (r.mode === 'live') countdown(el, r);
+  if (r.mode === 'live') countdown((now - r.gunMs) / 1000, r);
   // In LIVE, between the gun and your start-line crossing the clock runs from the gun: no
   // gap talk until chip time has taken over (it does ~60 m past the line; if it never
   // finds your crossing, the gap from the gun is spoken from 100 m on).
   const waiting = r.mode === 'live' && r.t0Source === 'gun' && (d === null || d < 100);
   // what to say this frame: a bar, the next aid station, the gap every N metres
   const words = [];
+  if (el >= 0 && !r.finish) offCourseWords(now, words);
   const bar = barDue(d, el);
   if (bar) words.push(bar.caf ? 'Take caffeinated bar.' : 'Take regular bar.');
   const aid = waterDue(d, el);
@@ -661,7 +690,8 @@ function runningFrame(now, dt) {
   const pocket = pocketOn();
   if (S.lastPanel.pocket !== pocket) {
     $('#pocket').hidden = !pocket;
-    if (pocket) renderPocket();
+    // black again: close the run settings, so a touch in the pocket cannot land on them
+    if (pocket) { closeSheets(); renderPocket(); }
     S.lastPanel = { pocket };
   }
   if (pocket) return;
@@ -669,8 +699,37 @@ function runningFrame(now, dt) {
   if (S.mapReady) renderRunMap(now, el, d, est, dt);
 }
 
+// Off course: "Off course: 60 meters from the course." when it is clear, again as it grows
+// past 100 m, 200 m, 500 m, 1 km, 2 km; "Back on course." when you are.
+const OFF_SAY = [0, 100, 200, 500, 1000, 2000];
+
+function offCourseWords(now, words) {
+  const off = S.offNow;
+  if (off) {
+    const k = OFF_SAY.filter((x) => off.r >= x).length;
+    if (!S.offSaid || (k > S.offSaid.k && now - S.offSaid.at > 20000)) {
+      S.offSaid = { k, at: now };
+      words.push(`Off course: ${spokenDist(off.r)} from the course.`);
+    }
+  } else if (S.offSaid) {
+    S.offSaid = null;
+    words.push('Back on course.');
+  }
+}
+
+function spokenDist(m) {
+  return m < 1000 ? `${Math.max(10, Math.round(m / 10) * 10)} meters` : `${(m / 1000).toFixed(1)} kilometers`;
+}
+
 // The off-pace rules with the first warning at 5 or 10 s (Settings)
 function offPace() { return offPaceConfig(S.settings.voiceBand === 10 ? 10 : 5); }
+
+// "5, 10, 15, 20, 25, 30, 45 s, 1 min, 90 s, 2, 3, 4 and 5 min"
+function ladderText(band) {
+  const st = offPaceConfig(band).steps;
+  const s = st.filter((x) => x < 60).join(', ');
+  return `${s} s, 1 min, 90 s, ${st.filter((x) => x >= 120).map((x) => x / 60).join(', ').replace(/, (\d+)$/, ' and $1')} min`;
+}
 
 // An off-pace cue in words: "15 seconds behind", "On pace."
 function sayCue(cue, estimating, words) {
@@ -688,6 +747,7 @@ function countdownWords(sec) {
   return `Start in ${sec} seconds.`;
 }
 
+// el: seconds since the gun
 function countdown(el, r) {
   const left = -el;
   // the first frame: marks already behind are not said
@@ -695,7 +755,7 @@ function countdown(el, r) {
   if (S.countdownAt === -1) return;
   if (el >= 0) {
     S.countdownAt = -1;
-    if (el < 5) S.voice.say(r.rehearsal ? 'Go!' : 'Gun time.', { force: !!r.rehearsal });
+    if (el < 5) S.voice.say(r.rehearsal ? 'Go!' : `Gun time: ${spokenTimeOfDay(r.gunMs)}.`, { force: !!r.rehearsal });
     renderChips();
     return;
   }
@@ -822,7 +882,7 @@ function detectCrossing(now, el) {
     if (c && c <= r.gunMs + 25 * 60000) {
       r.crossing = c;
       setT0(c, 'chip', `Chip time: you crossed the start line at ${fmtTimeOfDay(c, true)}.`);
-      S.voice.say('Chip time.');
+      S.voice.say(`Chip time: ${spokenTimeOfDay(c)}.`);
     }
     return;
   }
@@ -868,6 +928,11 @@ function renderRunPanel(now, el, d, est, estimating) {
     cls = 'wait';
     num = fmtCountdown(-el);
     word = r.mode === 'live' ? 'TO THE GUN' : 'TO START';
+  } else if (S.offNow) {
+    // how far off, in big: "90 m", "1.2 km"
+    cls = 'nolock';
+    num = S.offNow.r < 1000 ? `${Math.max(10, Math.round(S.offNow.r / 10) * 10)} m` : `${(S.offNow.r / 1000).toFixed(1)} km`;
+    word = 'OFF COURSE';
   } else if (d === null) {
     cls = 'nolock';
     num = '—';
@@ -880,7 +945,7 @@ function renderRunPanel(now, el, d, est, estimating) {
   }
   // status line
   const fixAge = S.fix ? (Date.now() - S.fixReal) / 1000 : Infinity;
-  if (S.holdMsg && S.holdMsg.until > Date.now()) status = S.holdMsg.text;
+  if (S.offNow && el >= 0) status = 'No gap until you are back on the course';
   else if (el >= 0 && d === null && S.tracker && S.tracker.offCourse) status = `You are ${Math.round(S.tracker.offCourse)} m from the course`;
   else if (estimating) status = S.course && S.course.inTunnel(d, 30) ? 'TUNNEL · no GPS · estimating' : `No GPS for ${Math.round(est.age)} s · estimating`;
   else if (fixAge > 8 && !S.sim) status = `No GPS for ${Math.round(fixAge)} s`;
@@ -925,6 +990,7 @@ function fitGap(text) {
   const H = wrap.clientHeight, W = wrap.clientWidth;
   if (!H || !W) return;
   let size = (H / 0.78) * 0.97;
+  if (text === '—') size *= 0.4; // no number yet: a small dash, not a white slab
   el.style.fontSize = `${size}px`;
   const w = el.scrollWidth;
   const maxW = W * 0.95;
@@ -959,6 +1025,7 @@ function clockBadge(r) {
 function renderRunMap(now, el, d, est, dt) {
   const map = S.map;
   const r = S.run;
+  const free = S.freeMap; // unlocked: markers move, the camera stays where you put it
   if (S.free) {
     const f = S.free;
     if (f.pos) {
@@ -972,8 +1039,8 @@ function renderRunMap(now, el, d, est, dt) {
       const target = f.bearing ?? S.cam.bearing;
       S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 1.5);
       S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(300), dt, 2);
-      map.follow({ lat: f.pos[0], lon: f.pos[1], bearing: S.cam.bearing, zoom: S.cam.zoom });
-      map.setMe(f.pos[0], f.pos[1], { travel: f.bearing });
+      if (!free) map.follow({ lat: f.pos[0], lon: f.pos[1], bearing: S.cam.bearing, zoom: S.cam.zoom });
+      map.setMe(f.pos[0], f.pos[1], { travel: f.bearing, heading: compassHeading() });
     }
     return;
   }
@@ -986,10 +1053,19 @@ function renderRunMap(now, el, d, est, dt) {
     const [ga, go] = course.line.latLonAt(gd);
     map.setGhost(ga, go, course.line.bearingAt(gd, 12, 4));
   } else map.setGhost(null);
-  if (d === null) {
-    if (S.fix) {
-      map.follow({ lat: S.fix.lat, lon: S.fix.lon, bearing: S.cam.bearing, zoom: 16, pitch: 40 });
-      map.setMe(S.fix.lat, S.fix.lon);
+  // Off the course, not placed on it yet, or the map unlocked: you are where the GPS says,
+  // pointing where you are going (and the way you face, with the compass on).
+  if (d === null || free) {
+    if (S.fix && Date.now() - S.fixReal < 30000) {
+      const travel = rawTravel();
+      if (!free) {
+        if (travel !== null) S.cam.bearing = smoothAngle(S.cam.bearing, travel, dt, 1.5);
+        // off the course: flat, you in the middle, far enough out to see the course too
+        const want = S.offNow ? map.zoomToSee(S.fix.lat, S.offNow.r * 1.3) : 16;
+        S.cam.zoom = smooth(S.cam.zoom, want, dt, 1);
+        map.follow({ lat: S.fix.lat, lon: S.fix.lon, bearing: S.cam.bearing, zoom: S.cam.zoom, pitch: S.offNow ? 0 : 40 });
+      }
+      map.setMe(S.fix.lat, S.fix.lon, { travel, heading: compassHeading() });
     }
     return;
   }
@@ -1001,6 +1077,22 @@ function renderRunMap(now, el, d, est, dt) {
   S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(course.lookaheadAt(Math.max(0, dc))), dt, 2.5);
   map.follow({ lat: la, lon: lo, bearing: S.cam.bearing, zoom: S.cam.zoom });
   map.setMe(la, lo, { travel });
+}
+
+// Your direction of travel from the GPS alone: from where you were 8+ m back, within the
+// last 20 s; else the phone's own course when moving; else unknown (a dot).
+function rawTravel() {
+  const tr = S.rawTrail || [];
+  const f = S.fix;
+  if (!f) return null;
+  for (let i = tr.length - 1; i >= 0; i--) {
+    if (haversine(tr[i].lat, tr[i].lon, f.lat, f.lon) >= 8) return bearingDeg(tr[i].lat, tr[i].lon, f.lat, f.lon);
+  }
+  return Number.isFinite(f.heading) && f.heading >= 0 && f.speed > 1 ? f.heading : null;
+}
+
+function compassHeading() {
+  return S.compass && S.compassListening && Date.now() - S.headingAt < 3000 ? S.heading : null;
 }
 
 // ---------------------------------------------------------------- rendering: ready
@@ -1124,13 +1216,19 @@ function bindUi() {
       if (ok) { S.needWakeTap = false; renderChips(); }
     }
   }, { capture: true });
-  $('#btn-recenter').addEventListener('click', () => { S.follow = true; S.overviewShown = false; enableCompass(); });
+  $('#btn-recenter').addEventListener('click', () => {
+    if (S.phase === 'running') { exitFreeMap(); return; }
+    S.follow = true; S.overviewShown = false; enableCompass();
+  });
   $('#btn-overview').addEventListener('click', () => { S.follow = false; S.map.overview(S.fix ? [S.fix.lat, S.fix.lon] : null); });
   if (S.mapReady) {
     S.map.map.on('dragstart', () => { if (S.phase === 'ready') S.follow = false; });
-    S.map.map.on('click', (e) => onMapClick(e.lngLat));
   }
-  bindLongPress($('#info'), MENU_HOLD_MS, openRunMenu);
+  bindHoldFx($('#info'), 'menu', openRunMenu, {
+    when: () => S.phase === 'running',
+    onTap: () => toast('Hold 5 s to open the settings', 2000),
+  });
+  bindHoldFx($('#map'), 'map', enterFreeMap, { when: () => S.phase === 'running' && !S.freeMap });
   $('#pocket').addEventListener('click', () => {
     S.peekUntil = Date.now() + 12000; // look for 12 s, then back to black
     frame();
@@ -1161,46 +1259,91 @@ function bindUi() {
   window.addEventListener('pagehide', () => { if (S.track) S.track.flush(); });
 }
 
-// Opening the run menu takes a 5-second hold on the bottom row: a bar fills across the
-// row and the line above counts down. Letting go early does nothing.
-const MENU_HOLD_MS = 5000;
+// ---- long holds: the gear row opens the run settings (5 s), the map unlocks the map
+// (5 s), "End run" ends the run (10 s). Long and deliberate, so a pocket or a sweaty thumb
+// cannot do them. While held, a fill slides across the whole screen, top to bottom, with a
+// countdown; letting go early, or moving the finger, does nothing.
+const HOLDS = {
+  menu: { ms: 5000, title: 'Settings', sub: 'Keep holding to open', color: 'var(--num)' },
+  map: { ms: 5000, title: 'Map', sub: 'Keep holding to move the map freely', color: 'var(--num)' },
+  stop: { ms: 10000, title: 'End run', sub: 'Keep holding to end the run', color: '#ff1f1f', danger: true },
+};
+let holdNow = null; // the hold in progress: {kind, cancel}
 
-function bindLongPress(el, ms, fn) {
-  let t0 = 0, raf = 0, active = false, sx = 0, sy = 0, shown = -1;
-  const run = $('#run');
-  const say = (text, until) => {
-    S.holdMsg = text ? { text, until } : null;
-    const line = $('#status-line');
-    if (text && line.textContent !== text) line.textContent = text;
-    S.lastPanel.status = text || null;
-  };
-  const stop = (early) => {
-    if (!active) return;
-    active = false;
+function cancelHold() { if (holdNow) holdNow.cancel(); }
+
+function bindHoldFx(el, kind, fn, { slop = 30, when = () => true, onTap = null } = {}) {
+  const cfg = HOLDS[kind];
+  const fx = $('#holdfx');
+  let id = null, t0 = 0, raf = 0, sx = 0, sy = 0, shown = false, last = -1;
+  const end = (done) => {
+    if (id === null) return;
+    id = null;
     cancelAnimationFrame(raf);
-    run.classList.remove('holding');
-    run.style.setProperty('--hold', 0);
-    if (early) say('Hold for 5 seconds to open the menu', Date.now() + 2500);
-    else say(null);
+    if (holdNow && holdNow.kind === kind) holdNow = null;
+    fx.hidden = true;
+    if (!done && !shown && onTap) onTap();
   };
   el.addEventListener('pointerdown', (e) => {
-    if (S.phase !== 'running' || active) return;
-    active = true; t0 = performance.now(); sx = e.clientX; sy = e.clientY; shown = -1;
+    if (id !== null) { end(false); return; } // a second finger: a pinch, not a hold
+    if (holdNow || !when(e)) return;
+    id = e.pointerId; t0 = performance.now(); sx = e.clientX; sy = e.clientY; shown = false; last = -1;
+    holdNow = { kind, cancel: () => end(false) };
     try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    run.classList.add('holding');
+    keepLit(cfg.ms + 12000);
     const step = () => {
-      if (!active) return;
-      const p = Math.min(1, (performance.now() - t0) / ms);
-      run.style.setProperty('--hold', p);
-      const left = Math.ceil((1 - p) * ms / 1000);
-      if (left !== shown && p < 1) { shown = left; say(`Keep holding · ${left}`, Infinity); }
-      if (p >= 1) { stop(false); fn(); return; }
+      if (id === null) return;
+      const t = performance.now() - t0;
+      const p = Math.min(1, t / cfg.ms);
+      if (!shown && t > 200) {
+        shown = true;
+        fx.classList.toggle('danger', !!cfg.danger);
+        fx.style.setProperty('--hf', cfg.color);
+        $$('#holdfx .hf-title').forEach((x) => { x.textContent = cfg.title; });
+        $$('#holdfx .hf-sub').forEach((x) => { x.textContent = cfg.sub; });
+        fx.hidden = false;
+      }
+      if (shown) {
+        fx.style.setProperty('--p', p.toFixed(4));
+        const left = Math.max(1, Math.ceil((cfg.ms - t) / 1000));
+        if (left !== last) { last = left; $$('#holdfx .hf-count').forEach((x) => { x.textContent = left; }); }
+      }
+      if (p >= 1) { end(true); fn(); return; }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
   });
-  el.addEventListener('pointermove', (e) => { if (active && Math.hypot(e.clientX - sx, e.clientY - sy) > 30) stop(true); });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => el.addEventListener(ev, () => stop(true)));
+  el.addEventListener('pointermove', (e) => { if (e.pointerId === id && Math.hypot(e.clientX - sx, e.clientY - sy) > slop) end(false); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => el.addEventListener(ev, (e) => { if (e.pointerId === id) end(false); }));
+}
+
+// Pocket mode: the screen stays lit while you use it (a hold, the run settings), then goes
+// black again.
+function keepLit(ms) {
+  if (S.phase === 'running' && S.settings.pocket) S.peekUntil = Math.max(S.peekUntil, Date.now() + ms);
+}
+
+// ---- the free map: after the 5 s hold on the map, it stops following you, lies flat and
+// north up, and can be dragged and pinched; your position is the GPS's own. ◎ follows you
+// again.
+function enterFreeMap() {
+  if (S.phase !== 'running' || S.freeMap || !S.mapReady) return;
+  S.freeMap = true;
+  S.map.setInteractive(true);
+  S.map.flat(S.fix ? [S.fix.lat, S.fix.lon] : null, 16);
+  $('#btn-recenter').hidden = false;
+  $('#btn-overview').hidden = !S.course;
+  updateCompass();
+  toast('Map unlocked: drag it, pinch it. ◎ follows you again.', 4000);
+}
+
+function exitFreeMap() {
+  if (!S.freeMap) return;
+  S.freeMap = false;
+  if (S.mapReady) { S.map.setInteractive(S.phase === 'ready'); S.map.cam = null; }
+  $('#btn-recenter').hidden = S.phase !== 'ready';
+  $('#btn-overview').hidden = S.phase !== 'ready';
+  updateCompass();
 }
 
 // A button that acts only after being held still for `ms`. A finger that moves is
@@ -1244,10 +1387,11 @@ function openSheet(name) {
 }
 
 function closeSheets() {
+  cancelHold();
   $$('.sheet').forEach((s) => { s.hidden = true; });
   $('#scrim').hidden = true;
   clearTimeout(S.menuTimer);
-  if (S.practiceDraft && !S.practiceDraft.picking && S.phase === 'ready') cancelPracticePreview();
+  if (S.practiceDraft && S.phase === 'ready') cancelPracticePreview();
 }
 
 // ---- run menu
@@ -1263,6 +1407,7 @@ function openRunMenu() {
 }
 
 function armMenuTimer() {
+  keepLit(12000);
   clearTimeout(S.menuTimer);
   S.menuTimer = setTimeout(() => { if (!$('#sheet-menu').hidden) closeSheets(); }, 20000);
 }
@@ -1292,8 +1437,14 @@ function renderRunMenu() {
   }
   $('#menu-sync').innerHTML = sync.join('');
   $$('#menu-sync [data-sync]').forEach((b) => bindHold(b, 1000, () => {
-    if (b.dataset.sync === 'crossing') setT0(r.crossing, 'chip', `Clock now starts at your crossing, ${fmtTimeOfDay(r.crossing, true)}.`);
-    else { r.noAutoChip = true; setT0(r.gunMs, 'gun', `Clock now starts at the gun, ${fmtTimeOfDay(r.gunMs, true)}.`); }
+    if (b.dataset.sync === 'crossing') {
+      setT0(r.crossing, 'chip', `Clock now starts at your crossing, ${fmtTimeOfDay(r.crossing, true)}.`);
+      S.voice.say(`Chip time: ${spokenTimeOfDay(r.crossing)}.`);
+    } else {
+      r.noAutoChip = true;
+      setT0(r.gunMs, 'gun', `Clock now starts at the gun, ${fmtTimeOfDay(r.gunMs, true)}.`);
+      S.voice.say(`Gun time: ${spokenTimeOfDay(r.gunMs)}.`);
+    }
     S.crossHintUntil = 0;
     renderRunMenu();
   }));
@@ -1362,7 +1513,7 @@ function bindRunMenu() {
     } else { renderRunMenu(); armMenuTimer(); }
   });
   $('#btn-export').addEventListener('click', () => exportGpx(S.run));
-  bindHold($('#btn-stop'), 5000, () => { closeSheets(); stopRun(); });
+  bindHoldFx($('#btn-stop'), 'stop', () => { closeSheets(); stopRun(); }, { slop: 12, when: () => { armMenuTimer(); return true; } });
 }
 
 // ---- settings
@@ -1614,7 +1765,7 @@ function renderSettings() {
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? `Warnings start ${band} s from the ghost, either way, then come at every 5 s step, getting worse and getting better: “${band}, ${band + 5}, ${band + 10} seconds behind”, then “${band + 5}”, “${band}” as you come back; the same ahead. Right after a warning, “on pace” the moment you meet the ghost again. Nothing else. ${band === 5 ? 'Expect one every 10 minutes or so.' : 'Rarely speaks; 5 s keeps you closer.'} Also your bars (“Take caffeinated bar”) and every aid station (“Water in 200 meters”).`
+    ? `Warnings start ${band} s from the ghost, either way, then come at ${ladderText(band)}, getting worse and getting better, and stop past 5 minutes: “${band}, ${band + 5}, ${band + 10} seconds behind”, then “${band + 5}”, “${band}” as you come back; the same ahead. Right after a warning, “on pace” the moment you meet the ghost again. Nothing else. ${band === 5 ? 'Expect one every 10 minutes or so.' : 'Rarely speaks; 5 s keeps you closer.'} Also your bars (“Take caffeinated bar”) and every aid station (“Water in 200 meters”).`
     : vm === 'every'
       ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';
@@ -1730,19 +1881,11 @@ function renderPlan() {
     `<table class="splits"><thead><tr><th>km</th><th>split</th><th>clock</th><th>time</th><th>m</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
 
-// ---- practice
+// ---- practice: Sommet 3V → DKN or DKN → Sommet 3V, one way
 function bindPractice() {
-  $('#pr-dkn').addEventListener('click', () => { S.practiceDraft.dest = { ...S.dest, label: 'Pavillon Charles-De Koninck (DKN)' }; buildPracticeRoute(); });
-  $('#pr-pick').addEventListener('click', () => {
-    S.practiceDraft.picking = true;
-    $$('.sheet').forEach((s) => { s.hidden = true; });
-    $('#scrim').hidden = true;
-    S.follow = false;
-    toast('Tap your destination on the map', 4000);
-  });
-  $('#pr-return').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-ret]'); if (!b) return;
-    S.settings.practiceReturn = b.dataset.ret === '1'; saveSettings(S.settings); buildPracticeRoute();
+  $('#pr-route').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-route]'); if (!b) return;
+    S.settings.practiceRoute = b.dataset.route; saveSettings(S.settings); buildPracticeRoute();
   });
   $$('#sheet-practice [data-ppace]').forEach((b) => b.addEventListener('click', () => {
     S.settings.practicePace = Math.max(180, Math.min(480, S.settings.practicePace + Number(b.dataset.ppace)));
@@ -1775,88 +1918,96 @@ function bindPractice() {
   });
 }
 
+function practiceRoute() {
+  return PRACTICE_ROUTES.find((r) => r.id === S.settings.practiceRoute) || PRACTICE_ROUTES[0];
+}
+
+// "Sommet → DKN" on the buttons, "Sommet 3V → DKN" as the run's name
+function routeLabel(r, key = 'name') { return `${S.places[r.from][key]} → ${S.places[r.to][key]}`; }
+
 async function openPractice() {
   if (!S.gpsWanted) startGps();
-  if (!S.practiceDraft) S.practiceDraft = { dest: null, spec: null, picking: false, waiting: false };
-  renderPracticeStatic();
+  if (!S.practiceDraft) S.practiceDraft = { spec: null, needFix: false };
   $('#pr-info').textContent = 'Loading the street map…';
   $('#pr-start').disabled = true;
   $('#pr-live').disabled = true;
   try {
     if (!S.graph) {
-      const [g, d, dest] = await Promise.all([
+      const [g, d, places] = await Promise.all([
         fetch('data/practice-graph.bin').then((r) => r.arrayBuffer()),
         fetch('data/practice-dem.bin').then((r) => r.arrayBuffer()),
-        fetch('data/practice-dest.json').then((r) => r.json()),
+        fetch('data/practice-places.json').then((r) => r.json()),
       ]);
       S.graph = new Graph(g);
       S.dem = new Dem(d);
-      S.dest = dest;
+      S.places = places;
     }
   } catch (e) {
     $('#pr-info').textContent = 'Could not load the practice map. Use Free run.';
     return;
   }
-  if (!S.practiceDraft.dest) S.practiceDraft.dest = { ...S.dest, label: 'Pavillon Charles-De Koninck (DKN)' };
+  // standing at one end: that is where the run starts
+  const fix = S.fix && Date.now() - S.fixReal < 60000 ? S.fix : null;
+  if (fix) {
+    const near = PRACTICE_ROUTES.map((r) => ({ r, m: haversine(fix.lat, fix.lon, S.places[r.from].lat, S.places[r.from].lon) }))
+      .sort((x, y) => x.m - y.m)[0];
+    if (near.m < 1000 && near.r.id !== practiceRoute().id) { S.settings.practiceRoute = near.r.id; saveSettings(S.settings); }
+  }
   buildPracticeRoute();
-}
-
-function renderPracticeStatic() {
-  const s = S.settings;
-  $('#pr-pace').textContent = `${fmtPace(s.practicePace)} /km`;
-  $('#pr-return').innerHTML = `<button type="button" data-ret="1" class="${s.practiceReturn ? 'on' : ''}">There and back</button><button type="button" data-ret="0" class="${s.practiceReturn ? '' : 'on'}">One way</button>`;
-  const dr = S.practiceDraft;
-  $('#pr-dest').textContent = dr && dr.dest ? dr.dest.label : 'Pavillon Charles-De Koninck (DKN)';
 }
 
 function buildPracticeRoute() {
   const dr = S.practiceDraft;
   if (!dr || !S.graph) return;
-  renderPracticeStatic();
-  const info = $('#pr-info');
-  const startBtn = $('#pr-start');
-  startBtn.disabled = true;
-  $('#pr-live').disabled = true;
-  if (!S.fix || Date.now() - S.fixReal > 60000) {
-    dr.waiting = true;
-    info.textContent = 'Waiting for your GPS position… (go outside, allow location)';
-    return;
+  const r = practiceRoute();
+  $('#pr-route').innerHTML = PRACTICE_ROUTES.map((x) =>
+    `<button type="button" data-route="${x.id}" class="${x.id === r.id ? 'on' : ''}">${escapeHtml(routeLabel(x, 'short'))}</button>`).join('');
+  $('#pr-pace').textContent = `${fmtPace(S.settings.practicePace)} /km`;
+  const a = S.places[r.from], b = S.places[r.to];
+  S.practiceSpecs = S.practiceSpecs || {};
+  let spec = S.practiceSpecs[r.id];
+  if (!spec) {
+    const route = S.graph.route(a.lat, a.lon, b.lat, b.lon);
+    if (!route) {
+      $('#pr-info').textContent = 'Could not find the route on the street map. Use Free run.';
+      dr.spec = null;
+      return;
+    }
+    spec = S.practiceSpecs[r.id] = practiceSpec(route, S.dem, { name: routeLabel(r) });
   }
-  dr.waiting = false;
-  const route = S.graph.route(S.fix.lat, S.fix.lon, dr.dest.lat, dr.dest.lon);
-  if (!route) {
-    info.textContent = 'No route from here: you may be outside the Québec City practice map. Use Free run.';
-    dr.spec = null;
-    return;
-  }
-  const spec = practiceSpec(route, S.dem, { name: `Practice to ${dr.dest.label}`, outAndBack: S.settings.practiceReturn });
   dr.spec = spec;
+  renderPracticeInfo();
+  $('#pr-start').disabled = false;
+  $('#pr-live').disabled = false;
+  const pace = S.settings.practicePace;
+  const course = new Course(spec);
+  useCourse(course, course.plan({ target: (spec.distance / 1000) * pace }));
+  S.follow = true;
+  if (S.mapReady) S.map.overview(null);
+  S.overviewShown = true;
+}
+
+// "2.83 km one way · ghost 12:02 …", and how far you are from the start
+function renderPracticeInfo() {
+  const dr = S.practiceDraft;
+  if (!dr || !dr.spec) return;
+  const r = practiceRoute(), spec = dr.spec, start = S.places[r.from];
   const pace = S.settings.practicePace;
   const km = spec.distance / 1000;
-  const climb = spec.profile.ele.reduce((acc, v, i, a) => acc + (i && v > a[i - 1] ? v - a[i - 1] : 0), 0);
-  info.innerHTML = `<b>${km.toFixed(2)} km</b> ${S.settings.practiceReturn ? 'there and back' : 'one way'} · ghost ${fmtClock(km * pace)} at ${fmtPace(pace)} /km average · ${Math.round(climb)} m of climbing. The ghost uses even effort on the hills, like race day.`;
-  startBtn.disabled = false;
-  $('#pr-live').disabled = false;
-  const course = new Course(spec);
-  useCourse(course, course.plan({ target: km * pace }));
-  S.follow = true;
-  if (S.mapReady) S.map.overview([S.fix.lat, S.fix.lon]);
-  S.overviewShown = true;
+  const climb = spec.profile.ele.reduce((acc, v, i, x) => acc + (i && v > x[i - 1] ? v - x[i - 1] : 0), 0);
+  let where = '';
+  const fix = S.fix && Date.now() - S.fixReal < 60000 ? S.fix : null;
+  dr.needFix = !fix;
+  if (fix) {
+    const m = haversine(fix.lat, fix.lon, spec.line[0][0], spec.line[0][1]);
+    if (m > 150) where = ` <b>You are ${fmtDist(m)} from the start, ${escapeHtml(start.name)}.</b>`;
+  }
+  $('#pr-info').innerHTML = `<b>${km.toFixed(2)} km</b> one way, ${escapeHtml(start.full)} to ${escapeHtml(S.places[r.to].full)} · ghost ${fmtClock(km * pace)} at ${fmtPace(pace)} /km average · ${Math.round(climb)} m of climbing. The ghost uses even effort on the hills, like race day.${where}`;
 }
 
 function cancelPracticePreview() {
   S.practiceDraft = null;
   useCourse(S.marathon, S.readyPlan);
-}
-
-function onMapClick(lngLat) {
-  const dr = S.practiceDraft;
-  if (!dr || !dr.picking) return;
-  dr.picking = false;
-  dr.dest = { lat: lngLat.lat, lon: lngLat.lng, label: 'Point on the map' };
-  $('#scrim').hidden = false;
-  $('#sheet-practice').hidden = false;
-  buildPracticeRoute();
 }
 
 // ---------------------------------------------------------------- simulation
@@ -1879,7 +2030,7 @@ function startSim(speed, opts = {}) {
     // and 0.4 % slower than the ghost, with pace swings of their own.
     gen: simulate(course, plan, {
       startMs: crossAt, preStartS: live ? 15 : spec ? 3 : 45, seed: opts.seed ?? 1 + Math.floor(Math.random() * 1e9),
-      bias: opts.bias ?? -0.005 + Math.random() * 0.009, wobble: 0.02, outlierRate: 0.01,
+      bias: opts.bias ?? -0.005 + Math.random() * 0.009, wobble: 0.02, outlierRate: 0.01, detour: opts.detour || null,
     }),
     next: null,
   };
@@ -2018,20 +2169,32 @@ function fmtAway(ms) {
   return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
 }
 
-function fmtTimeOfDay(ms, seconds = false) {
+// hour, minute, second of the day in Québec (the race's time zone, whatever the phone's)
+function timeParts(ms) {
   const d = new Date(ms);
-  let h, m, sec;
   try {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Toronto', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
     }).formatToParts(d);
     const g = (t) => Number(parts.find((p) => p.type === t).value);
-    h = g('hour'); m = g('minute'); sec = g('second');
+    return [g('hour'), g('minute'), g('second')];
   } catch {
-    h = d.getHours(); m = d.getMinutes(); sec = d.getSeconds();
+    return [d.getHours(), d.getMinutes(), d.getSeconds()];
   }
+}
+
+function fmtTimeOfDay(ms, seconds = false) {
+  const [h, m, sec] = timeParts(ms);
   const mm = String(m).padStart(2, '0');
   return seconds ? `${h}:${mm}:${String(sec).padStart(2, '0')}` : `${h}:${mm}`;
+}
+
+// A time of day to the second, for the voice: "8 a.m. and 5 seconds" (8:00:05), "7:59 a.m.
+// and 55 seconds", "8 a.m. exactly", "5:42 p.m. and 1 second".
+function spokenTimeOfDay(ms) {
+  const [h, m, sec] = timeParts(ms);
+  const hm = m ? `${h % 12 || 12}:${String(m).padStart(2, '0')}` : `${h % 12 || 12}`;
+  return `${hm} ${h < 12 ? 'a.m.' : 'p.m.'}${sec ? ` and ${sec} second${sec === 1 ? '' : 's'}` : ' exactly'}`;
 }
 
 function spokenClock(sec) {

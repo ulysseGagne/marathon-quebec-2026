@@ -547,6 +547,20 @@ export class MapView {
     });
   }
 
+  // Flat and north up, centred on a point, zoomed out to at most maxZoom (the free map)
+  flat(at = null, maxZoom = 22) {
+    this.cam = null;
+    const c = at ? { center: [at[1], at[0]] } : {};
+    this.map.easeTo({ ...c, zoom: Math.min(maxZoom, this.map.getZoom()), pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 350 });
+  }
+
+  // Zoom at which a flat map centred at latitude `lat` shows `m` metres in every direction
+  zoomToSee(lat, m) {
+    const half = Math.min(this.container.clientWidth, this.container.clientHeight) / 2 || 180;
+    const z = Math.log2((40075016.686 * Math.cos((lat * Math.PI) / 180) * half) / (512 * Math.max(m, 30)));
+    return Math.max(11, Math.min(17.5, z));
+  }
+
   overview(extra = null) {
     if (!this.course) return;
     const line = this.course.line;

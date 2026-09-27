@@ -80,7 +80,7 @@
   <div id="scrim" hidden></div>
 
   <div id="sheet-menu" class="sheet" hidden>
-    <div class="sheet-head"><h2>Run</h2><button class="x" type="button" data-close>Close</button></div>
+    <div class="sheet-head"><h2>Run settings</h2><button class="x" type="button" data-close>Close</button></div>
     <div class="sheet-body">
       <p id="menu-summary" class="muted"></p>
       <div id="menu-sync"></div>
@@ -106,7 +106,7 @@
       <div class="menu-row"><span class="menu-label">Colours</span><div class="seg compact" id="menu-theme"></div></div>
       <div class="menu-row"><span class="menu-label">Pocket mode · black screen, voice only</span><div class="seg" id="menu-pocket"></div></div>
       <button id="btn-export" type="button" class="wide">Export GPX of this run</button>
-      <button id="btn-stop" type="button" class="wide danger hold5"><span class="fill"></span><span class="t">Hold 5 s to stop the run</span></button>
+      <button id="btn-stop" type="button" class="wide danger">Hold 10 s to end the run</button>
     </div>
   </div>
 
@@ -174,7 +174,7 @@
       <div class="set-block">
         <div class="set-title">Pocket mode</div>
         <div class="seg" id="set-pocket"></div>
-        <p class="muted small">For a phone in a pocket or an armband. During the run the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 s. Also in the run menu.</p>
+        <p class="muted small">For a phone in a pocket or an armband. During the run the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 s; when it goes black again, the run settings close. Also in the run settings (hold the gear 5 s).</p>
         <p class="muted small">Do not lock the phone with the side button: iOS freezes web apps while the phone is locked, so there is no GPS and no voice until you unlock it. The app then catches up and says the gap.</p>
       </div>
       <div class="set-block">
@@ -197,18 +197,10 @@
   <div id="sheet-practice" class="sheet" hidden>
     <div class="sheet-head"><h2>Practice</h2><button class="x" type="button" data-close>Close</button></div>
     <div class="sheet-body">
-      <p class="muted">Try the pacer on a real run this week. The route starts where you are standing.</p>
-      <div class="set-block">
-        <div class="set-title">Destination</div>
-        <div class="big-value small-value" id="pr-dest">Pavillon Charles-De Koninck (DKN)</div>
-        <div class="seg">
-          <button type="button" id="pr-dkn">DKN</button>
-          <button type="button" id="pr-pick">Tap the map…</button>
-        </div>
-      </div>
+      <p class="muted">Try the pacer on a real run: one way, from home to DKN or back.</p>
       <div class="set-block">
         <div class="set-title">Route</div>
-        <div class="seg" id="pr-return"></div>
+        <div class="seg" id="pr-route"></div>
       </div>
       <div class="set-block">
         <div class="set-title">Ghost average pace</div>
@@ -223,7 +215,7 @@
       <p id="pr-info" class="info-box"></p>
       <button type="button" class="big-btn go" id="pr-start" disabled>START PRACTICE</button>
       <button type="button" class="wide" id="pr-live" disabled>LIVE rehearsal · gun in 1 min</button>
-      <p class="muted small">LIVE rehearsal runs race-day LIVE mode on this route: a countdown, a “Go!” at the gun (there is no real one), then the switch to chip time as you cross a start line 30 m ahead of where you stand.</p>
+      <p class="muted small">LIVE rehearsal runs race-day LIVE mode on this route: a countdown, a “Go!” at the gun (there is no real one), then the switch to chip time as you cross a start line 30 m along the route. Stand at the start of the route.</p>
       <button type="button" class="wide" id="pr-free">Free run (no route, anywhere)</button>
     </div>
   </div>
@@ -270,6 +262,12 @@
     <div class="fin-gap" id="fin-gap"></div>
     <button type="button" class="wide" id="fin-export">Export GPX</button>
     <button type="button" class="wide" id="fin-close">Back to the map</button>
+  </div>
+
+  <!-- A long hold in progress: a fill slides across the whole screen, with a countdown -->
+  <div id="holdfx" hidden aria-hidden="true">
+    <div class="hf-in"><div class="hf-title"></div><div class="hf-count"></div><div class="hf-sub"></div></div>
+    <div class="hf-fill"><div class="hf-in"><div class="hf-title"></div><div class="hf-count"></div><div class="hf-sub"></div></div></div>
   </div>
 
   <div id="pocket" hidden>

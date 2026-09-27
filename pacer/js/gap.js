@@ -60,28 +60,35 @@ export function spokenGap(sec) {
 }
 
 // Voice "only when off pace". Warnings start `band` seconds from the ghost (5 or 10,
-// Settings), either way, then come at every 5 s step as the gap gets worse and as it gets
-// better: 5, 10, 15 seconds behind… then 10, 5 as you come back (the same ahead). "On pace"
-// the moment you meet the ghost again, only right after a warning: a small drift that never
-// reached the band, and back, says nothing.
+// Settings), either way, then come at each step of a ladder as the gap gets worse and as it
+// gets better: 5, 10, 15, 20, 25, 30, 45 seconds, 1 minute, 90 seconds, 2, 3, 4 and 5
+// minutes, and nothing past 5 minutes; coming back, at the step below the last warning (30
+// after 45, then 25, 20…). The same ahead. "On pace" the moment you meet the ghost again,
+// only right after a warning: a small drift that never reached the band, and back, says
+// nothing.
 // state = {level, inside}: level = the step last warned about (+10 = 10 s behind, -5 = 5 s
 // ahead), 0 once "on pace" was said or before any warning; inside = the gap came back well
 // inside since (3 s inside the band), so the same step can be warned about again.
 // shown = the gap on screen (whole seconds, + = behind).
 // Returns {gap} (the gap on screen, a step unless it jumped), {pace: true}, or null.
+export const OFF_PACE_STEPS = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180, 240, 300];
+
 export function offPaceConfig(band = 5) {
-  return { band, step: 5, rearm: Math.max(1, band - 3) };
+  return { band, steps: OFF_PACE_STEPS.filter((x) => x >= band), rearm: Math.max(1, band - 3) };
 }
 export const OFF_PACE = offPaceConfig(5);
 
-// the step at or below the gap: +10 for 12 s behind, -5 for 7 s ahead (band 5), 0 inside
-export function offPaceLevel(shown, { band, step } = OFF_PACE) {
+// the step at or below the gap: +10 for 12 s behind, -30 for 40 s ahead, 0 inside the band
+export function offPaceLevel(shown, { band, steps } = OFF_PACE) {
   const a = Math.abs(shown);
-  return a >= band ? Math.sign(shown) * (band + Math.floor((a - band) / step) * step) : 0;
+  if (a < band) return 0;
+  let v = steps[0];
+  for (const x of steps) if (x <= a) v = x;
+  return Math.sign(shown) * v;
 }
 
 export function offPaceCue(state, shown, cfg = OFF_PACE) {
-  const { band, step, rearm } = cfg;
+  const { band, steps, rearm } = cfg;
   const a = Math.abs(shown);
   const C = state.level || 0;
   if (C !== 0 && Math.sign(shown) !== Math.sign(C)) {
@@ -103,8 +110,8 @@ export function offPaceCue(state, shown, cfg = OFF_PACE) {
     state.inside = false;
     return { gap: shown };
   }
-  // better: down to a step below the last warning (at 10, then at 5)
-  const down = Math.max(band, Math.ceil(a / step) * step);
+  // better: back to a step below the last warning (30 after 45, then 25…, then the band)
+  const down = Math.max(band, steps.find((x) => x >= a) ?? steps[steps.length - 1]);
   if (down < Math.abs(C)) { state.level = Math.sign(C) * down; return { gap: shown }; }
   return null;
 }

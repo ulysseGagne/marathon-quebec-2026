@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { Graph, Dem, practiceSpec } from '../js/practice.js';
+import { Graph, Dem, practiceSpec, PRACTICE_ROUTES } from '../js/practice.js';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
 import { simulate } from '../js/sim.js';
@@ -10,7 +10,8 @@ import { haversine } from '../js/geo.js';
 const buf = (p) => { const b = readFileSync(new URL(p, import.meta.url)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
 const graph = new Graph(buf('../data/practice-graph.bin'));
 const dem = new Dem(buf('../data/practice-dem.bin'));
-const DKN = JSON.parse(readFileSync(new URL('../data/practice-dest.json', import.meta.url)));
+const PLACES = JSON.parse(readFileSync(new URL('../data/practice-places.json', import.meta.url)));
+const DKN = PLACES.dkn;
 
 function length(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += haversine(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]); return L; }
 
@@ -41,9 +42,26 @@ test('DEM gives plausible heights', () => {
   assert.ok(expo < 20, `start ${expo}`);
 });
 
-test('an out-and-back practice run tracks through the turnaround', () => {
-  const r = graph.route(46.7890, -71.2620, DKN.lat, DKN.lon);
-  const spec = practiceSpec(r, dem, { outAndBack: true });
+test('the two practice routes: Sommet 3V to DKN and back, one way, on streets', () => {
+  const lens = {};
+  for (const r of PRACTICE_ROUTES) {
+    const a = PLACES[r.from], b = PLACES[r.to];
+    const pts = graph.route(a.lat, a.lon, b.lat, b.lon);
+    assert.ok(pts, r.id);
+    const spec = practiceSpec(pts, dem, { name: r.id });
+    lens[r.id] = spec.distance;
+    // starts and ends at the two buildings (the street in front of them)
+    assert.ok(haversine(pts[0][0], pts[0][1], a.lat, a.lon) < 40, `${r.id} start`);
+    assert.ok(haversine(pts[pts.length - 1][0], pts[pts.length - 1][1], b.lat, b.lon) < 40, `${r.id} end`);
+    console.log(`   ${PLACES[r.from].name} -> ${PLACES[r.to].name}: ${(spec.distance / 1000).toFixed(2)} km`);
+  }
+  assert.ok(lens['home-dkn'] > 2500 && lens['home-dkn'] < 3500);
+  assert.ok(Math.abs(lens['home-dkn'] - lens['dkn-home']) < 100);
+});
+
+test('a practice run from Sommet 3V to DKN tracks within 30 m', () => {
+  const r = graph.route(PLACES.home.lat, PLACES.home.lon, DKN.lat, DKN.lon);
+  const spec = practiceSpec(r, dem);
   const course = new Course(spec);
   const plan = course.plan({ target: (course.total / 1000) * 270 });
   const start = Date.UTC(2026, 8, 29, 22, 0, 0);
@@ -56,6 +74,6 @@ test('an out-and-back practice run tracks through the turnaround', () => {
     maxErr = Math.max(maxErr, Math.abs(est.d - truth.d));
     n++;
   }
-  console.log(`   out-and-back ${(course.total / 1000).toFixed(2)} km: max error ${maxErr.toFixed(1)} m over ${n} s`);
+  console.log(`   Sommet 3V -> DKN ${(course.total / 1000).toFixed(2)} km: max error ${maxErr.toFixed(1)} m over ${n} s`);
   assert.ok(maxErr < 30);
 });

@@ -44,7 +44,7 @@ export const DEFAULT_SETTINGS = {
   pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun
   practicePace: 255,               // s/km for practice runs
-  practiceReturn: true,            // out and back
+  practiceRoute: 'home-dkn',       // 'home-dkn' (Sommet 3V → DKN) or 'dkn-home', one way
 };
 
 function get(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -58,6 +58,7 @@ export function loadSettings() {
   if (typeof s.voice === 'boolean' && s.voiceEvery === undefined) s.voiceEvery = s.voice ? 1000 : 0;
   delete s.voice;
   delete s.panel;
+  delete s.practiceReturn; // practice routes are one way now
   // before voice modes: 0 meant off; 1 km was the default and becomes "only when off pace"
   if (Array.isArray(s.bars)) {
     if (OLD_SUGGESTIONS.includes(JSON.stringify(s.bars))) s.bars = SUGGESTED_BARS.map((b) => ({ ...b }));
