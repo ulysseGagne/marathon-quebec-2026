@@ -5,6 +5,16 @@ const KEY_SETTINGS = 'pacer.settings.v1';
 const KEY_RUN = 'pacer.run.v1';
 const TRACK_PREFIX = 'pacer.track.';
 
+// Where to eat the bars (official km), chosen on the course: flat ground, water within
+// 300 m, one every 30-45 min (an XACT Energy bar is 25 g of carbs; XACT says one every
+// 30-60 min), none in the tunnel or on the km 11-16 climb, the last one by km 33.
+//   8.1  0:34  flat riverside, water at 8.4: digested before the tunnel and the climb
+//   19.0 1:22  Chemin Saint-Louis, the first flat stretch after the climbs, water at 19.3
+//   26.7 1:54  river road (Chemin du Foulon), water at 27
+//   32.6 2:19  Boulevard Champlain, water at 32.9
+export const SUGGESTED_BARS = [8.1, 19.0, 26.7, 32.6];
+const OLD_PLACEHOLDER_BARS = '[8.1,14.8,24.4,32.6]';
+
 export const DEFAULT_SETTINGS = {
   target: 2 * 3600 + 59 * 60 + 30, // race finish target (s)
   wind: { fromDeg: 45, kmh: 0 },
@@ -12,7 +22,7 @@ export const DEFAULT_SETTINGS = {
   voiceMode: 'offpace',             // 'offpace' (only when 10 s+ off), 'every' (voiceEvery), 'off'
   voiceEvery: 1000,                // metres between spoken gaps in 'every' mode
   voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
-  bars: [8.1, 14.8, 24.4, 32.6],   // official km where you eat a bar (placeholder plan: edit in Settings)
+  bars: SUGGESTED_BARS.slice(),    // official km where you eat a bar (Settings)
   theme: 'mono',                   // colour theme (js/theme.js)
   pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun
@@ -32,6 +42,8 @@ export function loadSettings() {
   delete s.voice;
   delete s.panel;
   // before voice modes: 0 meant off; 1 km was the default and becomes "only when off pace"
+  // the first, unchecked placeholder bars move to the spots chosen on the course
+  if (JSON.stringify(s.bars) === OLD_PLACEHOLDER_BARS) s.bars = SUGGESTED_BARS.slice();
   if (s.voiceMode === undefined && s.voiceEvery !== undefined) {
     if (s.voiceEvery === 0) { s.voiceMode = 'off'; s.voiceEvery = 1000; }
     else if (s.voiceEvery !== 1000) s.voiceMode = 'every';

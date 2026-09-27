@@ -219,6 +219,10 @@ button:disabled { opacity: 0.4; }
 .big-value.small-value { font-size: 26px; }
 .set-title.sub { margin-top: 14px; }
 .aid-list { margin: 0 0 4px; font: 600 16px/1.6 var(--ui); color: #cfcfcf; }
+#set-bars-list { margin: 6px 0 2px; }
+.bar-row { font: 600 15px/1.35 var(--ui); color: #cfcfcf; padding: 5px 0; border-bottom: 1px solid #1f1f1f; }
+.bar-row b { color: #fff; }
+.bar-row b.warn { color: var(--accent); }
 .aid-list b { color: #fff; }
 .text-in {
   width: 100%; min-height: 48px; padding: 0 12px; margin-bottom: 4px; border-radius: 12px;

@@ -8,7 +8,7 @@ import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
 import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
 import { FreeRun } from './freerun.js';
-import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseKms } from './store.js';
+import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseKms, SUGGESTED_BARS } from './store.js';
 import { Wake } from './wake.js';
 import { Voice } from './voice.js';
 import { simulate } from './sim.js';
@@ -1129,6 +1129,12 @@ function bindSettings() {
     if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
   });
   $('#set-bars').addEventListener('blur', () => renderSettings());
+  $('#set-bars-suggest').addEventListener('click', () => {
+    S.settings.bars = SUGGESTED_BARS.slice();
+    saveSettings(S.settings);
+    renderSettings();
+    if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
+  });
   $('#set-theme').addEventListener('click', (e) => {
     const b = e.target.closest('[data-theme]'); if (!b) return;
     setTheme(b.dataset.theme);
@@ -1230,10 +1236,21 @@ function renderSettings() {
   const bars = s.bars || [];
   const barsEl = $('#set-bars');
   if (document.activeElement !== barsEl) barsEl.value = bars.map((k) => k.toFixed(1)).join(', ');
+  // each bar with what the spot is like, so a spot typed in is checked the same way
+  $('#set-bars-list').innerHTML = bars.map((k, i) => {
+    const t = S.readyPlan.timeAt(k * 1000);
+    const gap = i ? Math.round((t - S.readyPlan.timeAt(bars[i - 1] * 1000)) / 60) : null;
+    const sp = S.marathon.spotAt(k * 1000);
+    const bad = sp.terrain !== 'flat' || !sp.water;
+    const what = `${sp.terrain === 'flat' ? 'flat' : `<b class="warn">${sp.terrain}${sp.tunnel ? '' : ` ${sp.grade > 0 ? '+' : ''}${sp.grade.toFixed(1)} %`}</b>`}` +
+      `${sp.street ? `, ${escapeHtml(sp.street)}` : ''} · ${sp.water ? `water at ${sp.water.km}` : '<b class="warn">no water within 700 m</b>'}`;
+    return `<div class="bar-row${bad ? ' bad' : ''}"><b>km ${k.toFixed(1)}</b> ${fmtClock(t).slice(0, 4)}${gap !== null ? ` (+${gap} min)` : ''} · ${what}</div>`;
+  }).join('');
+  const gels = S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ');
   $('#set-bars-note').textContent = bars.length
-    ? `${bars.length} bar${bars.length > 1 ? 's' : ''}, shown on the map: ${bars.map((k) => `km ${k.toFixed(1)} (${fmtClock(S.readyPlan.timeAt(k * 1000))})`).join(' · ')}. The voice says “Time for a bar” as you pass each one; the line under the number counts down the last 300 m.`
-    : 'No bars. Type the official km where you want to eat one, e.g. 8.1, 14.8, 24.4.';
-  $('#set-bars-note').textContent += ` The race has gels at km ${S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ')}.`;
+    ? `Shown on the map; “Bar in 240 m” under the number, and the voice says “Time for a bar”. Suggested spots: flat, water within 300 m, one every 30–45 min (an XACT Energy bar is 25 g of carbs; XACT says one every 30–60 min), none in the tunnel or on the km 11–16 climb, the last by km 33. The race's gels at km ${gels} can fill the longer gap after the first bar.`
+    : `No bars. Type the official km where you want to eat one. The race has gels at km ${gels}.`;
+  $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS);
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
     ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also “time for a bar” at your bars.'

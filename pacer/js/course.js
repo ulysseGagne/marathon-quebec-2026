@@ -86,6 +86,19 @@ export class Course {
     return ele[i] + (ele[i + 1] - ele[i]) * (f - i);
   }
 
+  // What a spot is like to eat a bar: slope over the stretch you eat on (-200 m to +400 m),
+  // tunnel, the next aid station ahead (water) and the street.
+  spotAt(d) {
+    const a = Math.max(0, d - 200), b = Math.min(this.total, d + 400);
+    const grade = b > a ? ((this.elevationAt(b) - this.elevationAt(a)) / (b - a)) * 100 : 0;
+    const water = this.aid.find((x) => x.d >= d && x.d - d <= 700) || null;
+    return {
+      grade, tunnel: this.inTunnel(d, 60), street: this.streetAt(d),
+      water: water ? { km: water.km, m: Math.round(water.d - d) } : null,
+      terrain: this.inTunnel(d, 60) ? 'in the tunnel' : grade > 1.5 ? 'uphill' : grade < -2.5 ? 'downhill' : 'flat',
+    };
+  }
+
   // Distance ahead worth showing on the map: long on straights, short before turns.
   // Precomputed every 10 m: distance to the point where the course has turned 50°
   // (cumulative) from the current heading, clamped to [220, 900] m.

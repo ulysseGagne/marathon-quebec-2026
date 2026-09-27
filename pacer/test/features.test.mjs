@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
 import { gapClips, spokenGap, offPaceCue } from '../js/gap.js';
-import { parseKms } from '../js/store.js';
+import { parseKms, SUGGESTED_BARS } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
 import { mulberry32, gauss } from '../js/sim.js';
 import { raceWind, forecastUrl } from '../js/weather.js';
@@ -139,4 +139,39 @@ test('wind forecast: race hours averaged, direction averaged as vectors (north w
   for (const part of ['start_date=2026-10-04', 'end_date=2026-10-04', 'wind_speed_10m', 'wind_direction_10m', 'wind_speed_unit=kmh', 'timezone=America%2FToronto']) {
     assert.ok(u.includes(part), part);
   }
+});
+
+test('bars: the suggested spots are flat, just before water, out of the tunnel, 25-50 min apart', () => {
+  const plan = course.plan({ target: 10770 });
+  let prev = null;
+  for (const km of SUGGESTED_BARS) {
+    const sp = course.spotAt(km * 1000);
+    assert.equal(sp.terrain, 'flat', `km ${km}: ${sp.terrain} ${sp.grade.toFixed(1)} %`);
+    assert.ok(sp.water && sp.water.m <= 400, `km ${km}: water ${JSON.stringify(sp.water)}`);
+    assert.ok(!sp.tunnel, `km ${km} in a tunnel`);
+    const t = plan.timeAt(km * 1000);
+    if (prev !== null) {
+      const min = (t - prev) / 60;
+      assert.ok(min >= 20 && min <= 50, `km ${km}: ${min.toFixed(0)} min after the previous bar`);
+    }
+    prev = t;
+  }
+  // and the spots it warns about
+  assert.equal(course.spotAt(10800).terrain, 'in the tunnel');
+  assert.equal(course.spotAt(12300).terrain, 'uphill');
+  assert.equal(course.spotAt(14800).terrain, 'uphill');   // the first placeholder had a bar here
+  assert.equal(course.spotAt(17000).water, null);
+});
+
+test('bars: the first placeholder moves to the suggested spots, your own list stays', async () => {
+  const stored = {};
+  globalThis.localStorage = {
+    getItem: (k) => (k in stored ? stored[k] : null), setItem: (k, v) => { stored[k] = String(v); }, removeItem: (k) => { delete stored[k]; },
+  };
+  const { loadSettings } = await import('../js/store.js');
+  stored['pacer.settings.v1'] = JSON.stringify({ bars: [8.1, 14.8, 24.4, 32.6] });
+  assert.deepEqual(loadSettings().bars, SUGGESTED_BARS);
+  stored['pacer.settings.v1'] = JSON.stringify({ bars: [10, 20, 30] });
+  assert.deepEqual(loadSettings().bars, [10, 20, 30]);
+  delete globalThis.localStorage;
 });
