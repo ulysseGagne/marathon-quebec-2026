@@ -72,31 +72,34 @@ export function gapClips(sec) {
   return s ? [`m${m}`, `${side}${s}`] : [`m${m}`, r > 0 ? 'behind' : 'ahead'];
 }
 
-// Voice "only when off pace": quiet while within 10 s of the ghost. It says the gap when it
-// first reaches 10 s, again at 15, 20, 25 s… as it gets worse (behind or ahead), nothing
-// while it improves, and "on pace" once back within 7 s.
-// state = {level}: the last level said (+k behind, -k ahead, 0 inside). shown = the gap on
-// screen (whole seconds, + = behind). Returns {gap} or {pace: true} to say, or null.
-export const OFF_PACE = { band: 10, step: 5, back: 7 };
+// Voice "only when off pace": silent while within 10 s of the ghost, either way (silence
+// means you are within 10 s). From there it speaks at every 5 s step, getting worse and
+// getting better: 10, 15, 20 seconds behind… then 15, 10 as you come back (the same
+// ahead), and nothing more once inside ±10 s again, not even "on pace".
+// state = {level}: the step last said, in seconds (+15 = 15 s behind, -10 = 10 s ahead, 0 =
+// nothing said since you were last inside). shown = the gap on screen (whole seconds, + =
+// behind). Returns {gap} to say (the gap on screen, a step unless it jumped), or null.
+export const OFF_PACE = { band: 10, step: 5, reset: 7 };
 
+// the step at or below the gap: +15 for 17 s behind, -10 for 12 s ahead, 0 inside ±10 s
 export function offPaceLevel(shown, { band, step } = OFF_PACE) {
   const a = Math.abs(shown);
-  return a >= band ? Math.sign(shown) * (1 + Math.floor((a - band) / step)) : 0;
+  return a >= band ? Math.sign(shown) * (band + Math.floor((a - band) / step) * step) : 0;
 }
 
 export function offPaceCue(state, shown, cfg = OFF_PACE) {
-  const L = offPaceLevel(shown, cfg);
-  const C = state.level || 0;
-  if (L !== 0 && (Math.sign(L) !== Math.sign(C) || Math.abs(L) > Math.abs(C))) {
-    state.level = L;
-    return { gap: shown };
-  }
-  if (C === 0) return null;
+  const { band, step, reset } = cfg;
   const a = Math.abs(shown);
-  if (a <= cfg.back) { state.level = 0; return { pace: true }; }
-  // clearly better than the level last said (3 s of slack, GPS wobbles): step down quietly,
-  // so that getting worse again is said again
-  const down = Math.sign(C) * Math.max(1, Math.abs(offPaceLevel(Math.sign(C) * (a + 3), cfg)));
-  if (Math.abs(down) < Math.abs(C)) state.level = down;
+  let C = state.level || 0;
+  // Back well inside (3 s of margin: GPS wobbles around 10 s), or over on the other side:
+  // start again from nothing, without a word.
+  if (C !== 0 && (a < reset || (a >= band && Math.sign(shown) !== Math.sign(C)))) C = state.level = 0;
+  if (a < band) return null;
+  // worse: a step further out than the last one said
+  const out = offPaceLevel(shown, cfg);
+  if (Math.abs(out) > Math.abs(C)) { state.level = out; return { gap: shown }; }
+  // better: down to a step below the last one said (said once, at 15, then at 10)
+  const down = Math.max(band, Math.ceil(a / step) * step);
+  if (down < Math.abs(C)) { state.level = Math.sign(C) * down; return { gap: shown }; }
   return null;
 }

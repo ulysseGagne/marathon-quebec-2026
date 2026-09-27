@@ -298,9 +298,11 @@ await page.evaluate(() => {
 await sleep(300);
 const toastTxt = await page.textContent('#toast');
 await sleep(1500);
-const caught = await page.evaluate((n) => ({ said: window.__spoken.slice(n), resume: window.__pacer.S.resume }), saidBefore);
+const caught = await page.evaluate((n) => ({ said: window.__spoken.slice(n), resume: window.__pacer.S.resume, up: window.__pacer.S.caughtUp }), saidBefore);
 console.log('after unlock:', toastTxt, JSON.stringify(caught));
-if (!/paused/.test(toastTxt) || !caught.said.some((t) => /seconds? (behind|ahead)$|on pace$/.test(t)) || caught.resume) errors.push('no catch-up after unlock');
+// it catches up; when off pace it says the gap only if it is 10 s or more
+const spokeGap = caught.said.some((t) => /seconds? (behind|ahead)$|on pace$/.test(t));
+if (!/paused/.test(toastTxt) || caught.resume || !caught.up || spokeGap !== (Math.abs(caught.up.gap) >= 10)) errors.push(`catch-up after unlock: ${JSON.stringify(caught)}`);
 const fin = await waitVirtual(10900);
 await sleep(1500);
 await shot('13-finish');
@@ -308,15 +310,12 @@ spoken.push(...(await page.evaluate(() => window.__spoken)));
 const how = await page.evaluate(() => window.__how);
 console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)), '| bars:', spoken.filter((t) => /bar/.test(t)).length,
   '| recorded clips', how.filter((h) => h === 'clips').length, 'iPhone voice', how.filter((h) => h === 'speech').length);
-// default voice: only when off pace (10 s or more), and "On pace." when back
+// default voice: only when off pace (10 s or more), both ways, never "On pace." 
 const gapsSaid = spoken.map((t) => /(\d+) seconds? (behind|ahead)/.exec(t)).filter(Boolean).map((m) => Number(m[1]));
 console.log('off-pace voice said gaps:', JSON.stringify(gapsSaid), '| on pace:', spoken.filter((t) => /^On pace/.test(t)).length);
 if (!gapsSaid.length) errors.push('voice never said the gap');
-if (gapsSaid.some((g) => g < 10) && !spoken.some((t) => /unlock|paused/.test(t))) {
-  // (the catch-up after the fake screen lock says the gap whatever it is)
-  const small = spoken.filter((t) => /(\d+) seconds? (behind|ahead)/.test(t) && Number(/(\d+)/.exec(t)[1]) < 10);
-  if (small.length > 1) errors.push(`off-pace voice spoke inside 10 s: ${small.join(' | ')}`);
-}
+if (spoken.some((t) => /^On pace/.test(t))) errors.push('"On pace" when off pace');
+if (gapsSaid.some((g) => g < 10)) errors.push(`off-pace voice spoke inside 10 s: ${JSON.stringify(gapsSaid)}`);
 // bars 1 km before water, every aid station 250 m before it
 const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
 console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'DECAF', nSaid(/Take decaffeinated bar/), 'water', nSaid(/Water in 250 meters/), 'gel', nSaid(/Gel in 250 meters/));

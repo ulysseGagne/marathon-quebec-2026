@@ -40,13 +40,13 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>Km 10.7–11.3 and km 36.2–36.7: about 580 m each time without GPS. The number keeps going (with ~) and catches up after the exit.</p>
 
 <h3>Voice</h3>
-<p><b>When off pace</b> (default): quiet while you are within 10 s of the ghost. When the gap reaches 10 s it says “10 seconds behind” (or ahead), then again at 15, 20, 25 s as it gets worse, never while it gets better, and “on pace” once you are back within 7 s. On a well-run race it hardly speaks.</p>
+<p><b>When off pace</b> (default): silent while you are within 10 s of the ghost, either way: silence means you are within 10 s. From there it speaks at every 5 s step, as the gap gets worse and as it gets better: “10 seconds behind”, “15”, “20”… then “15”, “10” as you come back, and nothing more once you are inside ±10 s again. The same ahead: “10 seconds ahead”, “15 seconds ahead”… A wobble around a step is not repeated. On a well-run race it hardly speaks.</p>
 <p>Or <b>every</b> 250 m, 500 m, 1 km or 2 km of official distance: “3 seconds behind”, “1 second ahead” or “on pace”. Or off. Settings, or the run menu. In the tunnel it says “about…”.</p>
 <p>In every mode but off it also says “<b>Take caffeinated bar</b>” or “<b>Take decaffeinated bar</b>” at your bars (1 km before an aid station), “<b>Water in 250 meters</b>” before every aid station (“<b>Gel in 250 meters</b>” at km 15.1 and 27), and “chip time” at the start line in LIVE. Nothing else.</p>
 <p><b>With Apple Music</b>: by default a recorded voice talks over your music, which keeps playing. That needs the <b>side switch on ring</b> (no orange showing): on silent, iOS mutes this voice. Do Not Disturb keeps calls quiet. The other choice (Settings) is the iPhone's own voice, which works on silent but pauses Apple Music while it talks, and the music may not restart.</p>
 
 <h3>Screen off, pocket mode</h3>
-<p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds). The app keeps the screen from locking by itself.</p>
+<p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds; in “when off pace”, only if you are 10 s or more off). The app keeps the screen from locking by itself.</p>
 <p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks when off pace.</p>
 
 <h3>Fuel: bars and gels</h3>

@@ -3,7 +3,7 @@
 // where you are on the course.
 import { Course } from './course.js';
 import { Tracker } from './tracker.js';
-import { GapDisplay, fmtGap, spokenGap, gapClips, offPaceCue, offPaceLevel } from './gap.js';
+import { GapDisplay, fmtGap, spokenGap, gapClips, offPaceCue, offPaceLevel, OFF_PACE } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
 import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
@@ -466,19 +466,16 @@ function runningFrame(now, dt) {
       }
     }
   }
-  // or only when off pace: quiet within 10 s, then 10, 15, 20… s, and "on pace" when back
+  // or only when off pace: silent within 10 s, then every 5 s step out and back in
   const g = S.gap.state();
   if (voiceMode() === 'offpace' && d !== null && el > 30 && !r.finish && !S.resume && g.shown !== null &&
       now - (S.alertAt || 0) > 20000) {
     const cue = offPaceCue(S.alert, g.shown);
     if (cue) {
       S.alertAt = now;
-      if (cue.pace) { words.push('On pace.'); clips.push('pace'); }
-      else {
-        const gc = gapClips(cue.gap);
-        words.push((estimating ? 'About ' : '') + spokenGap(cue.gap));
-        if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
-      }
+      const gc = gapClips(cue.gap);
+      words.push((estimating ? 'About ' : '') + spokenGap(cue.gap));
+      if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
     }
   }
   if (words.length && !r.finish) S.voice.say(words.join(' '), { clips: clips.length ? clips : null });
@@ -503,7 +500,8 @@ function runningFrame(now, dt) {
 }
 
 // After iOS paused the app (screen locked, another app in front), say where you stand as
-// soon as GPS has placed you on the course again.
+// soon as GPS has placed you on the course again (when off pace only: within 10 s the
+// voice stays silent, as always).
 function catchUp(now, raw, est) {
   const R = S.resume;
   const lastFix = S.free ? S.free.lastT : S.tracker && S.tracker.lastFix;
@@ -516,7 +514,9 @@ function catchUp(now, raw, est) {
   } else if (now - R.fixAt > 3000) {
     S.resume = null;
     const g = S.gap.state().value ?? 0;
-    if (!S.run.finish && raw !== null) S.voice.say(spokenGap(g), { clips: gapClips(g) });
+    const quiet = voiceMode() === 'offpace' && Math.abs(Math.round(g)) < OFF_PACE.band;
+    if (!S.run.finish && raw !== null && !quiet) S.voice.say(spokenGap(g), { clips: gapClips(g) });
+    S.caughtUp = { at: now, gap: Math.round(g), quiet };
     S.alert = { level: offPaceLevel(Math.round(g)) };
   }
 }
@@ -1369,7 +1369,7 @@ function renderSettings() {
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).'
+    ? 'Silent while you are within 10 s of the ghost, either way. From 10 s it says the gap at every 5 s step, getting worse and getting better: “10, 15, 20 seconds behind”, then “15”, “10” as you come back; the same ahead. Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).'
     : vm === 'every'
       ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';

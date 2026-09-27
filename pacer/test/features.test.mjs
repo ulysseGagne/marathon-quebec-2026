@@ -96,29 +96,33 @@ test('LIVE rehearsal route: start line 30 m ahead, official distance from there'
   assert.ok(Math.abs(p.timeAt(c.total) - (r.distance / 1000) * 255) < 1e-6);
 });
 
-test('voice when off pace: quiet inside ±10 s, then 10, 15, 20…, "on pace" when back', () => {
+test('voice when off pace: silent inside ±10 s, then every 5 s step, worse and better', () => {
   const st = { level: 0 };
   const said = [];
-  const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g); if (c) said.push(c.pace ? 'pace' : c.gap); } };
-  run([0, 3, -4, 6, 9, 9, 8, 9]);                 // on pace: nothing
+  const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g); if (c) said.push(c.gap); } };
+  run([0, 3, -4, 6, 9, 9, 8, 9]);                 // within 10 s: nothing
   assert.deepEqual(said, []);
   run([10, 11, 9, 10, 12, 14]);                   // 10 behind once, no chatter around 10
   assert.deepEqual(said, [10]);
-  run([15, 16, 18, 20]);                          // worse: 15, 20
-  assert.deepEqual(said, [10, 15, 20]);
-  run([19, 16, 14, 12]);                          // better: quiet
-  assert.deepEqual(said, [10, 15, 20]);
-  run([15]);                                      // wobbling back to 15: not repeated
-  assert.deepEqual(said, [10, 15, 20]);
-  run([11, 15]);                                  // worse again after clearly improving: said again
-  assert.deepEqual(said, [10, 15, 20, 15]);
-  run([11, 8, 7]);                                // back within 7 s: "on pace" once
-  assert.deepEqual(said, [10, 15, 20, 15, 'pace']);
-  run([5, 2, -3, -9]);                            // quiet
-  run([-10, -12, -15]);                           // ahead: 10, 15 ahead
-  assert.deepEqual(said, [10, 15, 20, 15, 'pace', -10, -15]);
-  run([-6]);
-  assert.deepEqual(said.slice(-1), ['pace']);
+  run([15, 16, 18, 20, 23, 25]);                  // worse: 15, 20, 25
+  assert.deepEqual(said, [10, 15, 20, 25]);
+  run([24, 22, 20, 19, 16, 15]);                  // better: 20, 15
+  assert.deepEqual(said, [10, 15, 20, 25, 20, 15]);
+  run([16, 15, 14, 15, 16, 19]);                  // wobbling around 15: not repeated
+  assert.deepEqual(said, [10, 15, 20, 25, 20, 15]);
+  run([13, 11, 10]);                              // better: 10
+  assert.deepEqual(said, [10, 15, 20, 25, 20, 15, 10]);
+  run([11, 9, 8, 10, 11]);                        // wobbling around 10: not repeated
+  run([8, 6, 3, 0, -4, 5]);                       // inside: silent, no "on pace"
+  assert.deepEqual(said, [10, 15, 20, 25, 20, 15, 10]);
+  run([9, 10]);                                   // out again: 10
+  assert.deepEqual(said.slice(-1), [10]);
+  said.length = 0;
+  run([6, 0, -6, -9, -10, -12, -15, -20, -22, -20, -16, -15, -11, -10, -8, -2]); // ahead, both ways
+  assert.deepEqual(said, [-10, -15, -20, -15, -10]);
+  said.length = 0;
+  run([2, 31, -30]);                              // a jump (after a pause): the gap itself
+  assert.deepEqual(said, [31, -30]);
 });
 
 test('wind forecast: race hours averaged, direction averaged as vectors (north wraps)', () => {
