@@ -3,7 +3,7 @@
 // where you are on the course.
 import { Course } from './course.js';
 import { Tracker } from './tracker.js';
-import { GapDisplay, fmtGap, spokenGap, gapClips, offPaceCue, offPaceLevel, OFF_PACE } from './gap.js';
+import { GapDisplay, fmtGap, spokenGap, gapClips, offPaceCue, offPaceLevel, offPaceConfig } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
 import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
@@ -515,7 +515,7 @@ function runningFrame(now, dt) {
   const g = S.gap.state();
   if (voiceMode() === 'offpace' && d !== null && el > 30 && !r.finish && !S.resume && g.shown !== null &&
       now - (S.alertAt || 0) > 20000) {
-    const cue = offPaceCue(S.alert, g.shown);
+    const cue = offPaceCue(S.alert, g.shown, offPace());
     if (cue) {
       S.alertAt = now;
       sayCue(cue, estimating, words, clips);
@@ -541,6 +541,9 @@ function runningFrame(now, dt) {
   renderRunPanel(now, el, d, est, estimating);
   if (S.mapReady) renderRunMap(now, el, d, est, dt);
 }
+
+// The off-pace rules with the first warning at 5 or 10 s (Settings)
+function offPace() { return offPaceConfig(S.settings.voiceBand === 10 ? 10 : 5); }
 
 // An off-pace cue as words and clips: "15 seconds behind", "On pace."
 function sayCue(cue, estimating, words, clips) {
@@ -572,7 +575,7 @@ function catchUp(now, raw, est) {
       S.caughtUp = { at: now, gap: shown, said: spokenGap(g) };
       return;
     }
-    const cue = offPaceCue(S.alert, shown) || (Math.abs(shown) >= OFF_PACE.band ? { gap: shown } : null);
+    const cue = offPaceCue(S.alert, shown, offPace()) || (Math.abs(shown) >= offPace().band ? { gap: shown } : null);
     const words = [], clips = [];
     if (cue) { sayCue(cue, false, words, clips); S.voice.say(words.join(' '), { clips }); S.alertAt = now; }
     S.caughtUp = { at: now, gap: shown, said: words.join(' ') || null };
@@ -822,10 +825,11 @@ function renderRunMap(now, el, d, est, dt) {
     return;
   }
   const course = S.course;
-  // the ghost is the front of the bright line, with its white arrow on top
-  const gd = el > 0 && S.plan ? Math.min(course.total, S.plan.distAt(el)) : course.line.d0;
+  // the ghost is the front of the bright line, with its white arrow on top; before the
+  // clock starts it waits on the start line (official km 0)
+  const gd = el > 0 && S.plan ? Math.min(course.total, S.plan.distAt(el)) : Math.max(course.line.d0, 0);
   map.setGhostAt(gd);
-  if (el > 0 && gd < course.total) {
+  if (gd < course.total) {
     const [ga, go] = course.line.latLonAt(gd);
     map.setGhost(ga, go, course.line.bearingAt(gd, 12, 4));
   } else map.setGhost(null);
@@ -1209,6 +1213,16 @@ function bindSettings() {
     setVoiceMode(b.dataset.vm);
     renderSettings();
   });
+  $('#set-band').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-band]'); if (!b) return;
+    S.settings.voiceBand = Number(b.dataset.band);
+    saveSettings(S.settings);
+    S.alert = { level: 0 };
+    S.voice.unlock();
+    const sample = S.settings.voiceBand;
+    S.voice.say(`${spokenGap(sample)}.`, { force: true, clips: gapClips(sample) });
+    renderSettings();
+  });
   $('#set-voice').addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
     S.voice.unlock();
@@ -1323,9 +1337,10 @@ function fuelPlanHtml(s) {
   return rows.join('');
 }
 
-// your bars on the map, and the one before the start at the start line
+// your bars on the map, and the one before the start at the start line (until a run starts:
+// then the ghost waits there)
 function showBars() {
-  if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars, S.settings.preBar || 'caf');
+  if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars, S.run ? 'none' : S.settings.preBar || 'caf');
 }
 
 function pillHtml(caf) { return `<span class="pill">${caf ? 'CAF' : 'DECAF'}</span>`; }
@@ -1412,6 +1427,9 @@ function renderSettings() {
   $('#set-vmode').innerHTML = voiceModeButtons();
   $('#set-voice').innerHTML = voiceButtons();
   $('#set-voice').hidden = (s.voiceMode || 'offpace') !== 'every';
+  const band = offPace().band;
+  $('#set-band').hidden = (s.voiceMode || 'offpace') !== 'offpace';
+  $('#set-band').innerHTML = [5, 10].map((b) => `<button type="button" data-band="${b}" class="${band === b ? 'on' : ''}">Warn from ${b} s</button>`).join('');
   const mix = s.voiceMix !== false;
   $('#set-mix').innerHTML = `<button type="button" data-mix="1" class="${mix ? 'on' : ''}">Keeps playing</button><button type="button" data-mix="0" class="${mix ? '' : 'on'}">Pauses</button>`;
   $('#set-mix-note').textContent = mix
@@ -1429,7 +1447,7 @@ function renderSettings() {
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? 'Warnings start 10 s from the ghost, either way, then come at every 5 s step, getting worse and getting better: “10, 15, 20 seconds behind”, then “15”, “10” as you come back; the same ahead. After a warning, “on pace” the moment you meet the ghost again. Nothing else within 10 s. Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).'
+    ? `Warnings start ${band} s from the ghost, either way, then come at every 5 s step, getting worse and getting better: “${band}, ${band + 5}, ${band + 10} seconds behind”, then “${band + 5}”, “${band}” as you come back; the same ahead. Right after a warning, “on pace” the moment you meet the ghost again. Nothing else. ${band === 5 ? 'Expect one every 10 minutes or so.' : 'Rarely speaks; 5 s keeps you closer.'} Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).`
     : vm === 'every'
       ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';
@@ -1470,7 +1488,7 @@ function setVoiceMode(m) {
   saveSettings(S.settings);
   S.voice.enabled = voiceMode() !== 'off';
   S.lastVoiceK = null;
-  S.alert = { level: offPaceLevel(S.gap.state().shown ?? 0) }; // start from where you are
+  S.alert = { level: offPaceLevel(S.gap.state().shown ?? 0, offPace()) }; // start from where you are
   if (m === 'every') setVoiceEvery(S.settings.voiceEvery || 1000);
   else if (m === 'offpace') {
     const g = S.phase === 'running' ? S.gap.state().value : null;

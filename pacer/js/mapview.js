@@ -222,7 +222,7 @@ export class MapView {
     const empty = fc([]);
     m.addSource('course', { type: 'geojson', data: empty, lineMetrics: true });
     m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
-    for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
+    for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends', 'endbars']) m.addSource(id, { type: 'geojson', data: empty });
     try { m.addImage('decaf-pill', barPill('DECAF'), { pixelRatio: 2 }); m.addImage('caf-pill', barPill('CAF'), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
     try { m.addImage('aid-drop', aidDrop(), { pixelRatio: 2 }); } catch (e) { console.warn('aid icon', e); }
     const round = { 'line-cap': 'round', 'line-join': 'round' };
@@ -240,6 +240,10 @@ export class MapView {
         'line-dasharray': [1.2, 1.2],
       },
     });
+    // the start and finish lines, painted across the road like the real ones
+    const barW = (extra) => ['interpolate', ['linear'], ['zoom'], 12, 2 + extra, 15, 4 + extra, 18, 8 + extra];
+    m.addLayer({ id: 'endbars-case', type: 'line', source: 'endbars', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#000000', 'line-width': barW(3) } });
+    m.addLayer({ id: 'endbars', type: 'line', source: 'endbars', layout: { 'line-cap': 'round' }, paint: { 'line-color': T.ends, 'line-width': barW(0) } });
     m.addLayer({
       id: 'aid', type: 'symbol', source: 'aid', minzoom: 12.5,
       layout: {
@@ -276,7 +280,7 @@ export class MapView {
         // START and FINISH are ~100 m apart: zoomed out, FINISH moves below its point
         // instead of printing over START (START is placed first).
         'text-field': ['get', 'label'], 'text-font': ['Open Sans Bold'], 'text-size': 14,
-        'text-variable-anchor': ['bottom', 'top', 'right', 'left'], 'text-radial-offset': 0.9,
+        'text-variable-anchor': ['bottom', 'top', 'right', 'left'], 'text-radial-offset': 1.9,
         'text-allow-overlap': false, 'symbol-sort-key': ['get', 'rank'],
       },
       paint: { 'text-color': T.ends, 'text-halo-color': '#000000', 'text-halo-width': 2 },
@@ -307,6 +311,7 @@ export class MapView {
     m.setPaintProperty('km-dot', 'circle-stroke-color', T.kmStroke);
     m.setPaintProperty('km-label', 'text-color', T.kmText);
     m.setPaintProperty('ends', 'text-color', T.ends);
+    m.setPaintProperty('endbars', 'line-color', T.ends);
     this._drawFront(this.front ?? 0);
     this._drawTrailFront(this.trailFront ?? 2);
   }
@@ -378,16 +383,27 @@ export class MapView {
     if (Math.hypot(sla - fla, slo - flo) > 0.0004) ends.push(pointFeature(flo, fla, { label: 'FINISH', rank: 1 }));
     else ends[0].properties.label = 'START · FINISH';
     this.map.getSource('ends').setData(fc(ends));
+    // a 22 m bar across the course at the start line (official km 0) and at the finish
+    const bar = (d) => {
+      const [x, y] = line.xyAt(d);
+      const b = (line.bearingAt(d, 10, 10) * Math.PI) / 180;
+      const dx = Math.cos(b) * 11, dy = -Math.sin(b) * 11;
+      return lineFeature([[line.proj.lon(x - dx), line.proj.lat(y - dy)], [line.proj.lon(x + dx), line.proj.lat(y + dy)]]);
+    };
+    this.endbars = [bar(0), bar(course.total)];
+    this.map.getSource('endbars').setData(fc(this.endbars));
     this.map.getSource('course-tunnel').setData(fc(course.tunnels
       .filter(([a, b]) => b - a > 120)
       .map(([a, b]) => lineFeature(line.slice(a, b).map(([la, lo]) => [lo, la])))));
-    this.setGhostAt(line.d0);
+    // before the start the bright line begins at the start line; the thin stretch behind it
+    // is the corral, there so the app can follow you up to the line
+    this.setGhostAt(Math.max(line.d0, 0));
   }
 
   clearCourse() {
     this.course = null;
     this.prog = null;
-    for (const id of ['course', 'course-tunnel', 'km', 'aid', 'bars', 'ends']) this.map.getSource(id).setData(fc([]));
+    for (const id of ['course', 'course-tunnel', 'km', 'aid', 'bars', 'ends', 'endbars']) this.map.getSource(id).setData(fc([]));
   }
 
   // Bars you planned to eat ([{km, caf}]), at official km on this course, and the one

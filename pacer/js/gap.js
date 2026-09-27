@@ -72,18 +72,22 @@ export function gapClips(sec) {
   return s ? [`m${m}`, `${side}${s}`] : [`m${m}`, r > 0 ? 'behind' : 'ahead'];
 }
 
-// Voice "only when off pace". Warnings start 10 s from the ghost, either way, then come at
-// every 5 s step as the gap gets worse and as it gets better: 10, 15, 20 seconds behind…
-// then 15, 10 as you come back (the same ahead). After a warning, "on pace" the moment you
-// meet the ghost again (the gap reaches 0 or changes side). Nothing else inside ±10 s.
-// state = {level, inside}: level = the step last warned about (+15 = 15 s behind, -10 =
-// 10 s ahead), 0 once "on pace" was said or before any warning; inside = the gap came back
-// well inside since (under 7 s), so the same step can be warned about again.
+// Voice "only when off pace". Warnings start `band` seconds from the ghost (5 or 10,
+// Settings), either way, then come at every 5 s step as the gap gets worse and as it gets
+// better: 5, 10, 15 seconds behind… then 10, 5 as you come back (the same ahead). "On pace"
+// the moment you meet the ghost again, only right after a warning: a small drift that never
+// reached the band, and back, says nothing.
+// state = {level, inside}: level = the step last warned about (+10 = 10 s behind, -5 = 5 s
+// ahead), 0 once "on pace" was said or before any warning; inside = the gap came back well
+// inside since (3 s inside the band), so the same step can be warned about again.
 // shown = the gap on screen (whole seconds, + = behind).
 // Returns {gap} (the gap on screen, a step unless it jumped), {pace: true}, or null.
-export const OFF_PACE = { band: 10, step: 5, rearm: 7 };
+export function offPaceConfig(band = 5) {
+  return { band, step: 5, rearm: Math.max(1, band - 3) };
+}
+export const OFF_PACE = offPaceConfig(5);
 
-// the step at or below the gap: +15 for 17 s behind, -10 for 12 s ahead, 0 inside ±10 s
+// the step at or below the gap: +10 for 12 s behind, -5 for 7 s ahead (band 5), 0 inside
 export function offPaceLevel(shown, { band, step } = OFF_PACE) {
   const a = Math.abs(shown);
   return a >= band ? Math.sign(shown) * (band + Math.floor((a - band) / step) * step) : 0;
@@ -112,7 +116,7 @@ export function offPaceCue(state, shown, cfg = OFF_PACE) {
     state.inside = false;
     return { gap: shown };
   }
-  // better: down to a step below the last warning (at 15, then at 10)
+  // better: down to a step below the last warning (at 10, then at 5)
   const down = Math.max(band, Math.ceil(a / step) * step);
   if (down < Math.abs(C)) { state.level = Math.sign(C) * down; return { gap: shown }; }
   return null;

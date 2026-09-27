@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
-import { gapClips, spokenGap, offPaceCue } from '../js/gap.js';
+import { gapClips, spokenGap, offPaceCue, offPaceConfig } from '../js/gap.js';
 import { parseBars, fmtBars, SUGGESTED_BARS } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
 import { mulberry32, gauss } from '../js/sim.js';
@@ -96,10 +96,30 @@ test('LIVE rehearsal route: start line 30 m ahead, official distance from there'
   assert.ok(Math.abs(p.timeAt(c.total) - (r.distance / 1000) * 255) < 1e-6);
 });
 
-test('voice when off pace: from 10 s every 5 s step both ways, "on pace" at the ghost', () => {
+test('voice when off pace, from 5 s (default): "on pace" only right after a warning', () => {
   const st = { level: 0 };
   const said = [];
   const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g); if (c) said.push(c.pace ? 'pace' : c.gap); } };
+  run([0, 2, -3, 4, -4, 1, 0]);                   // inside ±5 s: nothing
+  assert.deepEqual(said, []);
+  run([-3, -5, -4, -2, 0]);                       // 5 ahead, then back on the ghost: on pace
+  assert.deepEqual(said, [-5, 'pace']);
+  run([-1, -2, -1, 0, 1, 0]);                     // 2 ahead and back: nothing (no warning before)
+  assert.deepEqual(said, [-5, 'pace']);
+  run([3, 5, 8, 10, 12, 9, 5, 3, 1, 0]);          // behind: 5, 10, back to 5, on pace
+  assert.deepEqual(said, [-5, 'pace', 5, 10, 5, 'pace']);
+  run([3, 5, 4, 5, 4, 6]);                        // wobbling around 5: said once
+  assert.deepEqual(said.slice(-1), [5]);
+  run([3, 1, 3, 5]);                              // well back in (1 s), out again: warned again
+  run([2, -1]);                                   // went past the ghost: on pace
+  assert.deepEqual(said.slice(-3), [5, 5, 'pace']);
+});
+
+test('voice when off pace, from 10 s: every 5 s step both ways, "on pace" at the ghost', () => {
+  const st = { level: 0 };
+  const said = [];
+  const cfg = offPaceConfig(10);
+  const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g, cfg); if (c) said.push(c.pace ? 'pace' : c.gap); } };
   run([0, 3, -4, 6, 9, 9, 8, 9, 1, 0]);           // no warning yet: nothing, not even "on pace"
   assert.deepEqual(said, []);
   run([10, 11, 9, 10, 12, 14]);                   // 10 behind once, no chatter around 10

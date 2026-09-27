@@ -172,6 +172,23 @@ await shot('04-practice');
 await page.click('#sheet-practice [data-close]');
 await sleep(500);
 
+// before the gun the ghost waits on the start line (official km 0), where the white bar is:
+// a demo race at 1x, looked at during its 20 s countdown, then stopped
+await page.evaluate(() => window.__pacer.startSim(1, { seed: 3 }));
+await sleep(1500);
+const waiting = await page.evaluate(() => {
+  const { S, clock } = window.__pacer;
+  const g = S.map.ghost;
+  const ll = g.shown ? g.marker.getLngLat() : null;
+  const [la, lo] = S.course.line.latLonAt(0);
+  return { el: (clock.now() - S.run.t0) / 1000, off: ll ? Math.hypot((ll.lat - la) * 111320, (ll.lng - lo) * 111320 * Math.cos(la * Math.PI / 180)) : null,
+    bars: (S.map.endbars || []).length };
+});
+console.log('ghost before the gun:', JSON.stringify(waiting));
+if (!(waiting.el < 0) || waiting.off === null || waiting.off > 0.5 || waiting.bars !== 2) errors.push('ghost not waiting on the start line');
+await page.evaluate(() => window.__pacer.stopRun());
+await sleep(500);
+
 // Simulated race at 60x (the Settings demo race): gun 20 s after start of sim
 await page.evaluate(() => window.__pacer.startSim(60, { seed: 400, bias: -0.003 })); // a fixed demo race (the app's is random)
 const waitVirtual = async (el) => {
@@ -301,7 +318,7 @@ await sleep(1500);
 const caught = await page.evaluate((n) => ({ said: window.__spoken.slice(n), resume: window.__pacer.S.resume, up: window.__pacer.S.caughtUp }), saidBefore);
 console.log('after unlock:', toastTxt, JSON.stringify(caught));
 // it catches up; when off pace it says the gap only from 10 s (or "On pace." after a warning)
-const upOk = caught.up && (Math.abs(caught.up.gap) >= 10 ? /seconds? (behind|ahead)$/.test(caught.up.said || '') : !caught.up.said || caught.up.said === 'On pace.');
+const upOk = caught.up && (Math.abs(caught.up.gap) >= 5 ? /seconds? (behind|ahead)$/.test(caught.up.said || '') : !caught.up.said || caught.up.said === 'On pace.');
 if (!/paused/.test(toastTxt) || caught.resume || !upOk) errors.push(`catch-up after unlock: ${JSON.stringify(caught)}`);
 const fin = await waitVirtual(10900);
 await sleep(1500);
@@ -322,7 +339,7 @@ if (!gapsSaid.length) errors.push('voice never said the gap');
     if (/On pace\./.test(t)) { if (!pending) errors.push('"On pace" without a warning before it'); pending = false; }
   }
 }
-if (gapsSaid.some((g) => g < 10)) errors.push(`off-pace voice spoke inside 10 s: ${JSON.stringify(gapsSaid)}`);
+if (gapsSaid.some((g) => g < 5)) errors.push(`off-pace voice spoke inside 5 s: ${JSON.stringify(gapsSaid)}`);
 // bars 1 km before water, every aid station 250 m before it
 const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
 console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'DECAF', nSaid(/Take decaffeinated bar/), 'water', nSaid(/Water in 250 meters/), 'gel', nSaid(/Gel in 250 meters/));

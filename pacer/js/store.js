@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS = {
   aidSeconds: 0,
   voiceMode: 'offpace',             // 'offpace' (only when 10 s+ off), 'every' (voiceEvery), 'off'
   voiceEvery: 1000,                // metres between spoken gaps in 'every' mode
+  voiceBand: 5,                    // 'offpace': first warning at 5 or 10 s off the ghost
   voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
   bars: SUGGESTED_BARS.map((b) => ({ ...b })), // [{km, caf}] bars on the course, announced there
   preBar: 'caf',                   // before the start: 'caf', 'bar' or 'none'
