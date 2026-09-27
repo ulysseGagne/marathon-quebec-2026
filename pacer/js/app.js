@@ -8,7 +8,7 @@ import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
 import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
 import { FreeRun } from './freerun.js';
-import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseKms, SUGGESTED_BARS } from './store.js';
+import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseBars, fmtBars, SUGGESTED_BARS } from './store.js';
 import { Wake } from './wake.js';
 import { Voice } from './voice.js';
 import { simulate } from './sim.js';
@@ -158,6 +158,7 @@ function setupRunObjects() {
   S.alert = { level: 0 };
   S.alertAt = 0;
   S.lastBar = null;
+  S.lastGel = null;
   S.goSaid = false;
   S.resume = null;
   S.peekUntil = 0;
@@ -447,7 +448,8 @@ function runningFrame(now, dt) {
   // what to say this frame: a bar, the gap every N metres
   const words = [], clips = [];
   const bar = barDue(d, el);
-  if (bar) { words.push('Time for a bar.'); clips.push('bar'); }
+  if (bar) { words.push(bar.caf ? 'Time for a caffeine bar.' : 'Time for a bar.'); clips.push(bar.caf ? 'bar_caf' : 'bar'); }
+  if (gelDue(d, el)) { words.push('Gel at the next station.'); clips.push('gel'); }
   const every = voiceEvery();
   if (every && d !== null && el > 0) {
     const k = Math.floor(d / every);
@@ -518,27 +520,45 @@ function catchUp(now, raw, est) {
   }
 }
 
-// Your bars (Settings), official km on the marathon: passing one says "Time for a bar".
-function barKms() {
+// Fuel on the marathon: your bars (Settings) and the race's gels. Passing a bar says
+// "Time for a bar" (or "a caffeine bar"); 300 m before a gel station, "Gel at the next
+// station".
+function barList() {
   return S.course && S.course.id === 'marathon' ? (S.settings.bars || []) : [];
 }
 
+function gelList() {
+  return S.course && S.course.id === 'marathon' && S.settings.raceGels !== false ? S.course.aid.filter((a) => a.what === 'gels') : [];
+}
+
 function barDue(d, el) {
-  const bars = barKms();
-  if (!bars.length || d === null || el <= 0) return false;
-  const passed = bars.filter((km) => d >= km * 1000).length;
-  if (S.lastBar === null) { S.lastBar = passed; return false; }
-  if (passed > S.lastBar) { S.lastBar = passed; return true; }
+  const bars = barList();
+  if (!bars.length || d === null || el <= 0) return null;
+  const passed = bars.filter((b) => d >= b.km * 1000).length;
+  if (S.lastBar === null) { S.lastBar = passed; return null; }
+  if (passed > S.lastBar) { S.lastBar = passed; return bars[passed - 1]; }
+  return null;
+}
+
+function gelDue(d, el) {
+  const gels = gelList();
+  if (!gels.length || d === null || el <= 0) return false;
+  const passed = gels.filter((g) => d >= g.d - 300).length;
+  if (S.lastGel === null || S.lastGel === undefined) { S.lastGel = passed; return false; }
+  if (passed > S.lastGel) { S.lastGel = passed; return true; }
   return false;
 }
 
-// "Bar in 240 m" on the status line when one is coming up, "Bar: now" just after.
+// "Bar in 240 m" (or "Caffeine bar", "Gel station") on the status line when one is coming
+// up, "Bar: now" just after.
 function barStatus(d) {
   if (d === null) return '';
-  for (const km of barKms()) {
-    const to = km * 1000 - d;
-    if (to > 0 && to <= 300) return `Bar in ${Math.max(10, Math.round(to / 10) * 10)} m`;
-    if (to <= 0 && to > -150) return 'Bar: now';
+  const items = barList().map((b) => ({ d: b.km * 1000, name: b.caf ? 'Caffeine bar' : 'Bar' }))
+    .concat(gelList().map((g) => ({ d: g.d, name: 'Gel station' })));
+  for (const it of items) {
+    const to = it.d - d;
+    if (to > 0 && to <= 300) return `${it.name} in ${Math.max(10, Math.round(to / 10) * 10)} m`;
+    if (to <= 0 && to > -150) return `${it.name}: now`;
   }
   return '';
 }
@@ -651,7 +671,6 @@ function renderRunPanel(now, el, d, est, estimating) {
   const P = S.lastPanel;
   if (P.cls !== full) {
     bottom.className = full; P.cls = full;
-    if (S.mapReady && S.settings.theme === 'signal') S.map.setLineColor(cls === 'behind' ? '#FF2D2D' : cls === 'ahead' ? '#00E676' : '#FFFFFF');
   }
   let refit = false;
   if (P.word !== word) { $('#gap-word').textContent = word; P.word = word; refit = true; }
@@ -1134,17 +1153,26 @@ function bindSettings() {
     renderSettings();
   });
   $('#set-bars').addEventListener('change', (e) => {
-    S.settings.bars = parseKms(e.target.value, S.marathon.total / 1000);
+    S.settings.bars = parseBars(e.target.value, S.marathon.total / 1000);
     saveSettings(S.settings);
     renderSettings();
     if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
   });
   $('#set-bars').addEventListener('blur', () => renderSettings());
   $('#set-bars-suggest').addEventListener('click', () => {
-    S.settings.bars = SUGGESTED_BARS.slice();
+    S.settings.bars = SUGGESTED_BARS.map((b) => ({ ...b }));
+    S.settings.preBar = 'caf';
+    S.settings.raceGels = true;
     saveSettings(S.settings);
     renderSettings();
     if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
+  });
+  $('#set-fuel-opts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pre],[data-gels]'); if (!b) return;
+    if (b.dataset.pre) S.settings.preBar = b.dataset.pre;
+    if (b.dataset.gels) S.settings.raceGels = b.dataset.gels === '1';
+    saveSettings(S.settings);
+    renderSettings();
   });
   $('#set-theme').addEventListener('click', (e) => {
     const b = e.target.closest('[data-theme]'); if (!b) return;
@@ -1157,6 +1185,40 @@ function bindSettings() {
     renderSettings();
   });
   $('#btn-sim').addEventListener('click', () => startSim(20));
+}
+
+// ---- fuel plan: the bar before the start, your bars and the race's gels, in order
+function fuelPlanHtml(s) {
+  const plan = S.readyPlan, c = S.marathon;
+  const items = (s.bars || []).map((b) => ({ d: b.km * 1000, kind: b.caf ? 'caffeine bar' : 'bar', bar: true, caf: b.caf }))
+    .concat(s.raceGels !== false ? c.aid.filter((a) => a.what === 'gels').map((a) => ({ d: a.d, kind: 'race gel', gel: true })) : [])
+    .sort((a, b) => a.d - b.d);
+  const rows = [];
+  if ((s.preBar || 'caf') !== 'none') {
+    rows.push(`<div class="bar-row"><b>before the start</b> ${fmtTimeOfDay(gunMs() - 40 * 60000)} · ${s.preBar === 'bar' ? 'bar' : 'caffeine bar'}, 30–45 min before the gun</div>`);
+  }
+  let prevT = null;
+  for (const it of items) {
+    const t = plan.timeAt(it.d);
+    const gap = prevT === null ? null : Math.round((t - prevT) / 60);
+    prevT = t;
+    let what = '';
+    let bad = false;
+    if (it.bar) {
+      const sp = c.spotAt(it.d);
+      bad = sp.terrain !== 'flat' || !sp.water;
+      what = ` · ${sp.terrain === 'flat' ? 'flat' : `<b class="warn">${sp.terrain}${sp.tunnel ? '' : ` ${sp.grade > 0 ? '+' : ''}${sp.grade.toFixed(1)} %`}</b>`}` +
+        `${sp.street ? `, ${escapeHtml(sp.street)}` : ''} · ${sp.water ? `water at ${sp.water.km}` : '<b class="warn">no water within 700 m</b>'}`;
+    }
+    const km = it.gel ? String(it.d / 1000) : (it.d / 1000).toFixed(1);
+    const close = gap !== null && gap < 12 ? ' <b class="warn">close to the one before</b>' : '';
+    rows.push(`<div class="bar-row${bad ? ' bad' : ''}${it.gel ? ' gel' : ''}"><b>km ${km}</b> ${fmtClock(t).slice(0, 4)}${gap !== null ? ` (+${gap} min)` : ''} · ${it.kind}${close}${what}</div>`);
+  }
+  const nBars = (s.bars || []).length + ((s.preBar || 'caf') !== 'none' ? 1 : 0);
+  const nCaf = (s.bars || []).filter((b) => b.caf).length + ((s.preBar || 'caf') === 'caf' ? 1 : 0);
+  const nGels = s.raceGels !== false ? c.aid.filter((a) => a.what === 'gels').length : 0;
+  rows.push(`<div class="bar-row total">${nBars} bars × 25 g${nGels ? ` + ${nGels} race gels × ~30 g` : ''} ≈ ${nBars * 25 + nGels * 30} g of carbs · caffeine ${nCaf * 50} mg (${nCaf} × 50 mg)${nGels ? ' + the gels’ if they have some' : ''}</div>`);
+  return rows.join('');
 }
 
 // ---- wind forecast (optional: needs a connection, asked once)
@@ -1246,22 +1308,14 @@ function renderSettings() {
     : 'The iPhone\'s own voice: Apple Music pauses while it talks, and may not restart by itself.';
   const bars = s.bars || [];
   const barsEl = $('#set-bars');
-  if (document.activeElement !== barsEl) barsEl.value = bars.map((k) => k.toFixed(1)).join(', ');
-  // each bar with what the spot is like, so a spot typed in is checked the same way
-  $('#set-bars-list').innerHTML = bars.map((k, i) => {
-    const t = S.readyPlan.timeAt(k * 1000);
-    const gap = i ? Math.round((t - S.readyPlan.timeAt(bars[i - 1] * 1000)) / 60) : null;
-    const sp = S.marathon.spotAt(k * 1000);
-    const bad = sp.terrain !== 'flat' || !sp.water;
-    const what = `${sp.terrain === 'flat' ? 'flat' : `<b class="warn">${sp.terrain}${sp.tunnel ? '' : ` ${sp.grade > 0 ? '+' : ''}${sp.grade.toFixed(1)} %`}</b>`}` +
-      `${sp.street ? `, ${escapeHtml(sp.street)}` : ''} · ${sp.water ? `water at ${sp.water.km}` : '<b class="warn">no water within 700 m</b>'}`;
-    return `<div class="bar-row${bad ? ' bad' : ''}"><b>km ${k.toFixed(1)}</b> ${fmtClock(t).slice(0, 4)}${gap !== null ? ` (+${gap} min)` : ''} · ${what}</div>`;
-  }).join('');
+  if (document.activeElement !== barsEl) barsEl.value = fmtBars(bars);
+  $('#set-bars-list').innerHTML = fuelPlanHtml(s);
+  $('#set-fuel-opts').innerHTML =
+    `<div class="seg compact">${[['caf', 'Caffeine bar'], ['bar', 'Regular bar'], ['none', 'Nothing']].map(([k, t]) => `<button type="button" data-pre="${k}" class="${(s.preBar || 'caf') === k ? 'on' : ''}">${t}</button>`).join('')}</div>` +
+    `<div class="seg compact stack">${[['1', 'Take the race gels'], ['0', 'Skip them']].map(([k, t]) => `<button type="button" data-gels="${k}" class="${(s.raceGels !== false) === (k === '1') ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   const gels = S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ');
-  $('#set-bars-note').textContent = bars.length
-    ? `Shown on the map; “Bar in 240 m” under the number, and the voice says “Time for a bar”. Suggested spots: flat, water within 300 m, one every 30–45 min (an XACT Energy bar is 25 g of carbs; XACT says one every 30–60 min), none in the tunnel or on the km 11–16 climb, the last by km 33. The race's gels at km ${gels} can fill the longer gap after the first bar.`
-    : `No bars. Type the official km where you want to eat one. The race has gels at km ${gels}.`;
-  $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS);
+  $('#set-bars-note').textContent = `Type the km of your bars on the course; add “c” for a caffeinated one (22.6c). The app shows them on the map (BAR, CAF), counts down the last 300 m under the number, and the voice says “Time for a bar”, “Time for a caffeine bar”, or “Gel at the next station” 300 m before the gel stations (km ${gels}). Spots are checked for slope, water and the tunnel.`;
+  $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
     ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also “time for a bar” at your bars.'
@@ -1369,7 +1423,7 @@ function renderPlan() {
     const up = c.elevationAt(b) - c.elevationAt(a);
     const notes = [];
     for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`aid ${aid.km}${aid.what ? ` ${aid.what}` : ''}`);
-    for (const km of S.settings.bars || []) if (km * 1000 > a && km * 1000 <= b) notes.push(`bar ${km.toFixed(1)}`);
+    for (const bar of S.settings.bars || []) if (bar.km * 1000 > a && bar.km * 1000 <= b) notes.push(`${bar.caf ? 'caffeine bar' : 'bar'} ${bar.km.toFixed(1)}`);
     for (const [ta, tb] of c.tunnels) if (tb - ta > 300 && ta < b && tb > a) notes.push('tunnel');
     const cls = per > flat + 12 ? 'climb' : per < flat - 8 ? 'down' : '';
     rows.push(`<tr class="${cls}"><td>${b === c.total ? '42.2' : k}</td><td class="pace">${fmtPace(split)}</td>` +
@@ -1526,10 +1580,11 @@ function startSim(speed, opts = {}) {
   const crossAt = live ? gunAt + 5000 : virtStart + (spec ? 3000 : 26000);
   S.sim = {
     speed, realStart, virtStart, crossAt,
-    // Demo race: 19 s down at km 36, then a strong finish, 11 s under the target.
+    // A different race every time: a new random runner, on average between 0.5 % faster
+    // and 0.4 % slower than the ghost, with pace swings of their own.
     gen: simulate(course, plan, {
-      startMs: crossAt, preStartS: live ? 15 : spec ? 3 : 45, seed: opts.seed ?? 400,
-      bias: opts.bias ?? -0.003, wobble: 0.02, outlierRate: 0.01,
+      startMs: crossAt, preStartS: live ? 15 : spec ? 3 : 45, seed: opts.seed ?? 1 + Math.floor(Math.random() * 1e9),
+      bias: opts.bias ?? -0.005 + Math.random() * 0.009, wobble: 0.02, outlierRate: 0.01,
     }),
     next: null,
   };

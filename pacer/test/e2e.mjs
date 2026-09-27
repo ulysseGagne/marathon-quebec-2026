@@ -92,20 +92,20 @@ await page.evaluate(() => { window.__pacer.S.follow = false; window.__pacer.S.ma
 await sleep(1500);
 const barsShown = await page.evaluate(() => window.__pacer.S.map.map.queryRenderedFeatures({ layers: ['bars'] }).length);
 console.log('bar markers on the overview:', barsShown);
-if (barsShown < 4) errors.push('bar markers missing');
+if (barsShown < 3) errors.push('bar markers missing');
 await page.evaluate(() => { window.__pacer.S.follow = true; window.__pacer.S.overviewShown = false; });
 
 await page.click('[data-open="settings"]');
 await sleep(500);
 await shot('02-settings');
 // bars typed in Settings, with a decimal comma
-await page.fill('#set-bars', '8,1 15 24.4, 33');
+await page.fill('#set-bars', '8,1 15c 24.4, 33');
 await page.press('#set-bars', 'Enter');
 await page.evaluate(() => document.querySelector('#set-bars').blur());
 await sleep(300);
 const barsSet = await page.evaluate(() => window.__pacer.S.settings.bars);
 console.log('bars typed:', JSON.stringify(barsSet), '|', await page.textContent('#set-bars-note'));
-if (JSON.stringify(barsSet) !== '[8.1,15,24.4,33]') errors.push('bars input');
+if (JSON.stringify(barsSet) !== '[{"km":8.1,"caf":false},{"km":15,"caf":true},{"km":24.4,"caf":false},{"km":33,"caf":false}]') errors.push('bars input');
 // the wind forecast, on demand
 await page.click('#set-wind-fc');
 await sleep(800);
@@ -153,7 +153,7 @@ await page.click('#sheet-practice [data-close]');
 await sleep(500);
 
 // Simulated race at 60x (the Settings demo race): gun 20 s after start of sim
-await page.evaluate(() => window.__pacer.startSim(60)); // the in-app demo race
+await page.evaluate(() => window.__pacer.startSim(60, { seed: 400, bias: -0.003 })); // a fixed demo race (the app's is random)
 const waitVirtual = async (el) => {
   for (let i = 0; i < 600; i++) {
     const v = await page.evaluate(() => {
@@ -180,7 +180,7 @@ const theme = (t) => page.evaluate((name) => {
   const b = document.querySelector(`#set-theme [data-theme="${name}"]`) || null;
   if (b) b.click();
 }, t);
-for (const [el, name, th] of [[240, '06-km1'], [1500, '07-km6'], [2745, '08-tunnel'], [3130, '09-climb', 'amber'], [6400, '10-champlain', 'ice'], [9000, '11-km36', 'signal']]) {
+for (const [el, name, th] of [[240, '06-km1'], [1500, '07-km6'], [2745, '08-tunnel'], [3130, '09-climb', 'amber'], [6400, '10-champlain', 'mono'], [9000, '11-km36', 'amber']]) {
   if (th) {
     // switch colours the way the Settings sheet does
     await page.evaluate(() => window.__pacer.openSheet('settings'));
@@ -281,7 +281,9 @@ if (gapsSaid.some((g) => g < 10) && !spoken.some((t) => /unlock|paused/.test(t))
   const small = spoken.filter((t) => /(\d+) seconds? (behind|ahead)/.test(t) && Number(/(\d+)/.exec(t)[1]) < 10);
   if (small.length > 1) errors.push(`off-pace voice spoke inside 10 s: ${small.join(' | ')}`);
 }
-if (spoken.filter((t) => /Time for a bar/.test(t)).length !== 4) errors.push('bar cues');
+if (spoken.filter((t) => /Time for a (caffeine )?bar/.test(t)).length !== 4) errors.push('bar cues');
+if (!spoken.some((t) => /Time for a caffeine bar/.test(t))) errors.push('caffeine bar cue');
+if (spoken.filter((t) => /Gel at the next station/.test(t)).length !== 2) errors.push('gel cues');
 if (how.filter((h) => h === 'clips').length < 5) errors.push('recorded clips not used');
 const finRow = await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish));
 if (!(JSON.parse(finRow).elapsed < 10800)) errors.push('demo race did not finish under 3:00');

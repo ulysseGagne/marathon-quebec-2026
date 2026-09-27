@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
 import { gapClips, spokenGap, offPaceCue } from '../js/gap.js';
-import { parseKms, SUGGESTED_BARS } from '../js/store.js';
+import { parseBars, fmtBars, SUGGESTED_BARS } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
 import { mulberry32, gauss } from '../js/sim.js';
 import { raceWind, forecastUrl } from '../js/weather.js';
@@ -60,7 +60,7 @@ test('voice: every gap and cue the app says has a recorded clip', () => {
   assert.deepEqual(gapClips(-120), ['m2', 'ahead']);
   // fixed cues named in the app
   const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
-  const ids = new Set(['about', 'every250', 'every500', 'every1000', 'every2000']);
+  const ids = new Set(['about', 'every250', 'every500', 'every1000', 'every2000', 'bar', 'bar_caf', 'gel']);
   for (const m of app.matchAll(/clips: \[((?:'[a-z0-9_]+'(?:, )?)+)\]/g)) {
     for (const id of m[1].split(', ')) ids.add(id.slice(1, -1));
   }
@@ -69,13 +69,15 @@ test('voice: every gap and cue the app says has a recorded clip', () => {
   for (const id of ids) assert.ok(clip(id), `missing voice/${id}.mp3`);
 });
 
-test('bars: km list typed in Settings', () => {
-  assert.deepEqual(parseKms('8.1, 14.8, 24.4, 32.6', 42.195), [8.1, 14.8, 24.4, 32.6]);
-  assert.deepEqual(parseKms('24,4 8,1', 42.195), [8.1, 24.4]);        // decimal commas
-  assert.deepEqual(parseKms('8,14,22', 42.195), [8, 14, 22]);         // comma-separated
-  assert.deepEqual(parseKms('10; 30.25 ; 50 x -3', 42.195), [10, 30.3]);
-  assert.deepEqual(parseKms('', 42.195), []);
-  assert.deepEqual(parseKms('15 15.0 15', 42.195), [15]);
+test('bars: km list typed in Settings, c for caffeine', () => {
+  const B = (km, caf = false) => ({ km, caf });
+  assert.deepEqual(parseBars('8.1, 22.6c, 32.6c', 42.195), [B(8.1), B(22.6, true), B(32.6, true)]);
+  assert.deepEqual(parseBars('24,4 8,1c', 42.195), [B(8.1, true), B(24.4)]);   // decimal commas
+  assert.deepEqual(parseBars('8,14C,22', 42.195), [B(8), B(14, true), B(22)]);   // comma-separated
+  assert.deepEqual(parseBars('10; 30.25 ; 50 x -3', 42.195), [B(10), B(30.3)]);
+  assert.deepEqual(parseBars('', 42.195), []);
+  assert.deepEqual(parseBars('15 15.0 15c', 42.195), [B(15, true)]);
+  assert.equal(fmtBars([B(8.1), B(22.6, true)]), '8.1, 22.6c');
 });
 
 test('LIVE rehearsal route: start line 30 m ahead, official distance from there', () => {
@@ -141,21 +143,27 @@ test('wind forecast: race hours averaged, direction averaged as vectors (north w
   }
 });
 
-test('bars: the suggested spots are flat, just before water, out of the tunnel, 25-50 min apart', () => {
+test('fuel: suggested bars are flat, just before water, out of the tunnel, and fit around the gels', () => {
   const plan = course.plan({ target: 10770 });
-  let prev = null;
-  for (const km of SUGGESTED_BARS) {
-    const sp = course.spotAt(km * 1000);
-    assert.equal(sp.terrain, 'flat', `km ${km}: ${sp.terrain} ${sp.grade.toFixed(1)} %`);
-    assert.ok(sp.water && sp.water.m <= 400, `km ${km}: water ${JSON.stringify(sp.water)}`);
-    assert.ok(!sp.tunnel, `km ${km} in a tunnel`);
-    const t = plan.timeAt(km * 1000);
-    if (prev !== null) {
-      const min = (t - prev) / 60;
-      assert.ok(min >= 20 && min <= 50, `km ${km}: ${min.toFixed(0)} min after the previous bar`);
-    }
-    prev = t;
+  for (const b of SUGGESTED_BARS) {
+    const sp = course.spotAt(b.km * 1000);
+    assert.equal(sp.terrain, 'flat', `km ${b.km}: ${sp.terrain} ${sp.grade.toFixed(1)} %`);
+    assert.ok(sp.water && sp.water.m <= 400, `km ${b.km}: water ${JSON.stringify(sp.water)}`);
+    assert.ok(!sp.tunnel, `km ${b.km} in a tunnel`);
+    assert.ok(b.km <= 33, 'no solid food after km 33');
   }
+  // bar, gel, bar, gel, bar: a fuel stop every 15-35 min
+  const gels = course.aid.filter((a) => a.what === 'gels').map((a) => a.km);
+  assert.deepEqual(gels, [15.1, 27]);
+  const stops = SUGGESTED_BARS.map((b) => ({ km: b.km, bar: true })).concat(gels.map((km) => ({ km, bar: false }))).sort((a, b) => a.km - b.km);
+  assert.deepEqual(stops.map((x) => x.bar), [true, false, true, false, true]);
+  for (let i = 1; i < stops.length; i++) {
+    const min = (plan.timeAt(stops[i].km * 1000) - plan.timeAt(stops[i - 1].km * 1000)) / 60;
+    assert.ok(min >= 15 && min <= 35, `${stops[i - 1].km} -> ${stops[i].km}: ${min.toFixed(0)} min`);
+  }
+  // caffeine: before the start plus the two second-half bars, 50 mg each
+  assert.equal(SUGGESTED_BARS.filter((b) => b.caf).length, 2);
+  assert.ok(SUGGESTED_BARS.filter((b) => b.caf).every((b) => b.km > 21));
   // and the spots it warns about
   assert.equal(course.spotAt(10800).terrain, 'in the tunnel');
   assert.equal(course.spotAt(12300).terrain, 'uphill');
@@ -163,15 +171,36 @@ test('bars: the suggested spots are flat, just before water, out of the tunnel, 
   assert.equal(course.spotAt(17000).water, null);
 });
 
-test('bars: the first placeholder moves to the suggested spots, your own list stays', async () => {
+test('bars: earlier suggestions move to the new plan, your own list stays', async () => {
   const stored = {};
   globalThis.localStorage = {
     getItem: (k) => (k in stored ? stored[k] : null), setItem: (k, v) => { stored[k] = String(v); }, removeItem: (k) => { delete stored[k]; },
   };
   const { loadSettings } = await import('../js/store.js');
-  stored['pacer.settings.v1'] = JSON.stringify({ bars: [8.1, 14.8, 24.4, 32.6] });
-  assert.deepEqual(loadSettings().bars, SUGGESTED_BARS);
+  for (const old of [[8.1, 14.8, 24.4, 32.6], [8.1, 19, 26.7, 32.6]]) {
+    stored['pacer.settings.v1'] = JSON.stringify({ bars: old });
+    assert.deepEqual(loadSettings().bars, SUGGESTED_BARS);
+  }
   stored['pacer.settings.v1'] = JSON.stringify({ bars: [10, 20, 30] });
-  assert.deepEqual(loadSettings().bars, [10, 20, 30]);
+  assert.deepEqual(loadSettings().bars, [{ km: 10, caf: false }, { km: 20, caf: false }, { km: 30, caf: false }]);
+  stored['pacer.settings.v1'] = JSON.stringify({ bars: [{ km: 12, caf: true }] });
+  assert.deepEqual(loadSettings().bars, [{ km: 12, caf: true }]);
+  delete stored['pacer.settings.v1'];
+  const d = loadSettings();
+  assert.equal(d.preBar, 'caf');
+  assert.equal(d.raceGels, true);
   delete globalThis.localStorage;
+});
+
+test('every name app.js imports is exported by its module', async () => {
+  const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+  let checked = 0;
+  for (const m of app.matchAll(/import \{([^}]+)\} from '(\.\/[a-z]+\.js)'/g)) {
+    const mod = await import(new URL(`../js/${m[2].slice(2)}`, import.meta.url));
+    for (const name of m[1].split(',').map((x) => x.trim()).filter(Boolean)) {
+      assert.ok(name in mod, `${m[2]} does not export ${name}`);
+      checked++;
+    }
+  }
+  assert.ok(checked > 30, `only ${checked} imports checked`);
 });

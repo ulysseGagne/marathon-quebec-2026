@@ -29,14 +29,6 @@
   --num: #ffd60a; --accent: #ffd60a; --me: #ffffff; --go-bg: #ffd60a;
   --ok: #ffd60a; --warn: #ff8a00; --bad: #ff453a;
 }
-:root[data-theme="ice"] {
-  --num: #cff6ff; --accent: #40d9ff; --me: #ffffff; --go-bg: #40d9ff;
-  --ok: #40d9ff; --warn: #ffffff; --bad: #ff453a;
-}
-:root[data-theme="signal"] {
-  --num: #ffffff; --accent: #ffd60a; --me: #ffffff; --go-bg: #00e676;
-  --ok: #00e676; --warn: #ffd60a; --bad: #ff2d2d;
-}
 
 * { box-sizing: border-box; }
 html, body {
@@ -147,15 +139,9 @@ button:disabled { opacity: 0.4; }
   padding: 4px 12px calc(4px + var(--sb));
 }
 #app.phase-running #bottom { color: var(--num); }
-/* Signal theme only: the whole panel turns red (behind) or green (ahead) */
-:root[data-theme="signal"] #app.phase-running #bottom.behind { background: var(--behind); color: #000; }
-:root[data-theme="signal"] #app.phase-running #bottom.ahead { background: var(--ahead); color: #000; }
 #bottom.est::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 16px, transparent 16px 32px);
-}
-:root[data-theme="signal"] #bottom.behind.est::after, :root[data-theme="signal"] #bottom.ahead.est::after {
-  background: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.16) 0 16px, transparent 16px 32px);
 }
 
 #gap-wrap {
@@ -223,6 +209,8 @@ button:disabled { opacity: 0.4; }
 .bar-row { font: 600 15px/1.35 var(--ui); color: #cfcfcf; padding: 5px 0; border-bottom: 1px solid #1f1f1f; }
 .bar-row b { color: #fff; }
 .bar-row b.warn { color: var(--accent); }
+.bar-row.gel { color: #9b9b9b; }
+.bar-row.total { border-bottom: 0; color: #9b9b9b; font-size: 14px; }
 .aid-list b { color: #fff; }
 .text-in {
   width: 100%; min-height: 48px; padding: 0 12px; margin-bottom: 4px; border-radius: 12px;

@@ -16,27 +16,16 @@ export const THEMES = {
     line: '#FFD60A', route: '#8C7A26',
     kmFill: '#000000', kmStroke: '#FFD60A', kmText: '#FFD60A', ends: '#FFD60A',
   },
-  ice: {
-    label: 'Ice',
-    line: '#40D9FF', route: '#2F7688',
-    kmFill: '#000000', kmStroke: '#40D9FF', kmText: '#40D9FF', ends: '#CFF6FF',
-  },
-  signal: {
-    label: 'Signal',
-    line: '#FFFFFF', route: '#8A8A8A',
-    kmFill: '#000000', kmStroke: '#FFFFFF', kmText: '#FFFFFF', ends: '#FFFFFF',
-  },
 };
 
-export const THEME_ORDER = ['mono', 'amber', 'ice', 'signal'];
+export const THEME_ORDER = ['mono', 'amber'];
 
 export const THEME_NOTES = {
   mono: 'White on black, one yellow accent: your arrow. Most contrast in sunlight.',
   amber: 'Everything in one warm yellow.',
-  ice: 'Everything in one cool cyan.',
-  signal: 'The number panel and the line ahead turn red when behind, green when ahead.',
 };
 
+// (Ice and Signal were removed: anyone on them goes back to B&W.)
 export function themeName(name) { return THEMES[name] ? name : 'mono'; }
 export function themeOf(name) { return THEMES[themeName(name)]; }
 

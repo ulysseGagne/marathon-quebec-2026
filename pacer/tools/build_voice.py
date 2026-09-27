@@ -47,6 +47,8 @@ def phrases():
     p['every1000'] = 'Every kilometer.'
     p['every2000'] = 'Every 2 kilometers.'
     p['offpace'] = 'Only when off pace.'
+    p['bar_caf'] = 'Time for a caffeine bar.'
+    p['gel'] = 'Gel at the next station.'
     return p
 
 

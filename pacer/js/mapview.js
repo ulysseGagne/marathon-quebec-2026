@@ -66,8 +66,9 @@ function icon(w, h, draw) {
   return g.getImageData(0, 0, c.width, c.height);
 }
 
-// Where you planned to eat a bar: a small black label, white outline and text.
-function barPill() {
+// Where you planned to eat a bar: a small black label, white outline and text
+// (BAR, or CAF for a caffeinated one).
+function barPill(text) {
   return icon(38, 19, (g) => {
     roundRect(g, 1, 1, 36, 17, 5);
     g.fillStyle = '#000000'; g.fill();
@@ -75,21 +76,24 @@ function barPill() {
     g.fillStyle = '#FFFFFF';
     g.font = '800 11px -apple-system, system-ui, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('BAR', 19, 10);
+    g.fillText(text, 19, 10);
   });
 }
 
-// Aid station: a small white drop with a black outline (no colour: they matter less).
+// Aid station: a small black circle with a white outline, like the km markers, and a
+// white drop inside (no colour: they matter less).
 function aidDrop() {
-  return icon(16, 20, (g) => {
+  return icon(22, 22, (g) => {
+    g.beginPath(); g.arc(11, 11, 9.8, 0, 2 * Math.PI);
+    g.fillStyle = '#000000'; g.fill();
+    g.lineWidth = 1.6; g.strokeStyle = '#FFFFFF'; g.stroke();
     g.beginPath();
-    g.moveTo(8, 1.5);
-    g.bezierCurveTo(8, 1.5, 14.5, 9, 14.5, 12.5);
-    g.arc(8, 12.5, 6.5, 0, Math.PI);
-    g.bezierCurveTo(1.5, 9, 8, 1.5, 8, 1.5);
+    g.moveTo(11, 4.6);
+    g.bezierCurveTo(11, 4.6, 15, 9.6, 15, 12);
+    g.arc(11, 12, 4, 0, Math.PI);
+    g.bezierCurveTo(7, 9.6, 11, 4.6, 11, 4.6);
     g.closePath();
     g.fillStyle = '#FFFFFF'; g.fill();
-    g.lineWidth = 1.6; g.strokeStyle = '#000000'; g.stroke();
   });
 }
 
@@ -215,7 +219,7 @@ export class MapView {
     m.addSource('course', { type: 'geojson', data: empty, lineMetrics: true });
     m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
     for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
-    try { m.addImage('bar-pill', barPill(), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
+    try { m.addImage('bar-pill', barPill('BAR'), { pixelRatio: 2 }); m.addImage('caf-pill', barPill('CAF'), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
     try { m.addImage('aid-drop', aidDrop(), { pixelRatio: 2 }); } catch (e) { console.warn('aid icon', e); }
     const round = { 'line-cap': 'round', 'line-join': 'round' };
     // free run: your own trail, bright from the ghost to you
@@ -236,7 +240,7 @@ export class MapView {
       id: 'aid', type: 'symbol', source: 'aid', minzoom: 12.5,
       layout: {
         'icon-image': 'aid-drop', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.7, 17, 1.1],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.65, 17, 1],
         'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
         // what is handed out, when it is more than water and electrolytes
         'text-field': ['coalesce', ['get', 'what'], ''], 'text-font': ['Open Sans Bold'],
@@ -277,7 +281,8 @@ export class MapView {
     m.addLayer({
       id: 'bars', type: 'symbol', source: 'bars', minzoom: 9,
       layout: {
-        'icon-image': 'bar-pill', 'icon-allow-overlap': true, 'icon-ignore-placement': false, // labels keep clear of it
+        'icon-image': ['case', ['get', 'caf'], 'caf-pill', 'bar-pill'],
+        'icon-allow-overlap': true, 'icon-ignore-placement': false, // labels keep clear of it
         'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 13, 0.8, 16, 1, 18, 1.2],
         'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
       },
@@ -343,15 +348,6 @@ export class MapView {
     if (rot !== g.rot) { g.rot = rot; g.path.setAttribute('transform', `rotate(${rot})`); }
   }
 
-  // Signal theme: the bright line takes the panel's red or green.
-  setLineColor(color) {
-    if (color === this.lineColor) return;
-    this.lineColor = color;
-    this.ghost.path.style.fill = color;
-    this._drawFront(this.front ?? 0);
-    this._drawTrailFront(this.trailFront ?? 2);
-  }
-
   setCourse(course) {
     this.course = course;
     const line = course.line;
@@ -388,11 +384,11 @@ export class MapView {
     for (const id of ['course', 'course-tunnel', 'km', 'aid', 'bars', 'ends']) this.map.getSource(id).setData(fc([]));
   }
 
-  // Bars you planned to eat, at official km on this course.
-  setBars(course, kms) {
-    const feats = (kms || []).filter((k) => k * 1000 < course.total).map((k) => {
-      const [la, lo] = course.line.latLonAt(k * 1000);
-      return pointFeature(lo, la, { km: k });
+  // Bars you planned to eat ([{km, caf}]), at official km on this course.
+  setBars(course, bars) {
+    const feats = (bars || []).filter((b) => b.km * 1000 < course.total).map((b) => {
+      const [la, lo] = course.line.latLonAt(b.km * 1000);
+      return pointFeature(lo, la, { km: b.km, caf: !!b.caf });
     });
     this.map.getSource('bars').setData(fc(feats));
   }

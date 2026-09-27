@@ -48,15 +48,24 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds). The app keeps the screen from locking by itself.</p>
 <p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks when off pace.</p>
 
-<h3>Bars</h3>
-<p>Settings → Bars: the official km where you eat a bar. Each shows on the map as a small BAR label; the line under the number counts down the last 300 m (“Bar in 240 m”), and the voice says “Time for a bar” as you pass it. They are also in the Splits.</p>
-<p>The suggested spots are <b>km 8.1, 19.0, 26.7 and 32.6</b> (0:34, 1:22, 1:54, 2:19 on the plan). Each is on flat ground, 300 m before a water station to wash the bar down, about 30 to 45 minutes apart (an XACT Energy bar is 25 g of carbs; XACT says one every 30 to 60 minutes). None is in the tunnel or on the long climb from the tunnel to the Plains (km 10.7 to 16), which is why the second bar waits until km 19; the race's gel at 15.1 can fill that gap. The last one is at km 32.6, while the stomach still copes, before the final push. Settings checks any spot you type the same way (slope, water, tunnel).</p>
+<h3>Fuel: bars and gels</h3>
+<p>The suggested plan (Settings → Fuel), a fuel stop every 18 to 32 minutes:</p>
+<ul>
+<li><b>Before the start</b>, about 7:20 (30 to 45 min before the gun): a <b>caffeine</b> bar.</li>
+<li><b>km 8.1</b> (0:34): a regular bar. Flat riverside, water at 8.4; digested before the tunnel and the climb.</li>
+<li><b>km 15.1</b> (1:04): the race's gel.</li>
+<li><b>km 22.6</b> (1:36): a <b>caffeine</b> bar. Flat on the Route Verte, water at 22.9; caffeine peaks 45 to 60 minutes later, for km 30 to 38.</li>
+<li><b>km 27</b> (1:54): the race's gel.</li>
+<li><b>km 32.6</b> (2:19): a <b>caffeine</b> bar for the last 10 km. Flat on Boulevard Champlain, water at 32.9.</li>
+</ul>
+<p>That is 4 bars (3 caffeinated, 1 regular: 2 regular ones spare) and 2 gels: about 160 g of carbs and 150 mg of caffeine. An XACT Energy bar is 25 g of carbs; the Performance ones add 50 mg of caffeine (guarana). The race's Krono gels are about 30 g, and some flavours have 25 to 50 mg of caffeine: if the ones handed out do, or if you had coffee at breakfast, make the km 32.6 bar a regular one. Try the caffeinated bars on a long run before race day.</p>
+<p>Why these spots: each bar is on flat ground, 300 m before a water station, never in the tunnel or on the climb from the tunnel to the Plains (km 10.7 to 16), and no solid food after km 33. On the map, bars are small BAR or CAF labels; under the number “Bar in 240 m”, “Caffeine bar in 240 m” or “Gel station in 240 m”; the voice says “Time for a bar”, “Time for a caffeine bar” or “Gel at the next station”. Settings checks any spot you type the same way (slope, water, tunnel) and adds up carbs and caffeine.</p>
 
 <h3>Aid stations</h3>
-<p>km 3.2 (water only) · 5.8 · 8.4 · 11.1 · 12.6 · <b>15.1 gels</b> · 19.3 · 22.9 · 24.7 sponges · <b>27 gels</b> · 28.9 · 32.9 · 36.3 · 37.4 oranges · 40.6. Water and Krono electrolytes at every station but the first, toilets at all of them (runner's guide). A bar eaten just before a station can be washed down. On the map they are small white drops, marked “gels”, “sponges” or “oranges” when they have them; also listed in Settings and in the Splits.</p>
+<p>km 3.2 (water only) · 5.8 · 8.4 · 11.1 · 12.6 · <b>15.1 gels</b> · 19.3 · 22.9 · 24.7 sponges · <b>27 gels</b> · 28.9 · 32.9 · 36.3 · 37.4 oranges · 40.6. Water and Krono electrolytes at every station but the first, toilets at all of them (runner's guide). A bar eaten just before a station can be washed down. On the map they are small circles with a drop, like the km markers, marked “gels”, “sponges” or “oranges” when they have them; also listed in Settings and in the Splits.</p>
 
 <h3>Colours</h3>
-<p>Settings → Colours. <b>B&amp;W</b> (default): white on black with one yellow accent, your arrow; the most contrast in sunlight. <b>Amber</b> and <b>Ice</b>: everything in one colour. <b>Signal</b>: the number panel and the line ahead turn red when behind, green when ahead. On the map, in every theme: white drops are aid stations (with “gels”, “sponges” or “oranges” when they have them), round badges are the kilometres, BAR labels are your bars.</p>
+<p>Settings → Colours. <b>B&amp;W</b> (default): white on black with one yellow accent, your arrow; the most contrast in sunlight. <b>Amber</b>: everything in one warm yellow. On the map, in both: round badges with a number are the kilometres, round badges with a drop are aid stations, BAR and CAF labels are your bars.</p>
 
 <h3>Practice this week</h3>
 <ol>
@@ -69,7 +78,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p><b>Night before</b></p>
 <ol>
 <li>Charge to 100 %. Open the app once on Wi-Fi: the chip must say <b>Works offline</b>.</li>
-<li>Settings: check your target, your <b>bars</b>, and tap a Voice button to hear it with Apple Music playing.</li>
+<li>Settings: check your target, your <b>fuel plan</b>, and tap a Voice button to hear it with Apple Music playing. Pack the bars in the order you eat them.</li>
 <li>Safari → Share → <b>Add to Home Screen</b>, and start it from there (full screen).</li>
 <li>Settings → Privacy &amp; Security → Location Services: on; Safari Websites (and the Pacer icon if listed) → While Using, <b>Precise Location on</b>.</li>
 <li>Settings → Display &amp; Brightness → <b>Auto-Lock → Never</b> for the morning (the app also keeps the screen on). Do not press the side button during the run: locking pauses the app.</li>
@@ -80,6 +89,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <ol>
 <li>Keep the phone warm inside your clothes: cold drains old batteries fast.</li>
 <li><b>Do Not Disturb</b> (or Airplane mode — GPS keeps working) so no call or notification covers the screen. <b>Side switch on ring</b>, so the voice can talk over your music.</li>
+<li>About 7:20: the pre-start bar (caffeine), with a few sips of water.</li>
 <li>Open the app in the corral 10 minutes early to get a GPS lock (chip ±5 m).</li>
 <li>Wind: tap the “Forecast wind” chip if it shows (or Settings → Use the forecast). Brightness up.</li>
 <li>Press LIVE in the corral (or START as you cross the mat). Guided Access if you use it.</li>

@@ -5,15 +5,20 @@ const KEY_SETTINGS = 'pacer.settings.v1';
 const KEY_RUN = 'pacer.run.v1';
 const TRACK_PREFIX = 'pacer.track.';
 
-// Where to eat the bars (official km), chosen on the course: flat ground, water within
-// 300 m, one every 30-45 min (an XACT Energy bar is 25 g of carbs; XACT says one every
-// 30-60 min), none in the tunnel or on the km 11-16 climb, the last one by km 33.
-//   8.1  0:34  flat riverside, water at 8.4: digested before the tunnel and the climb
-//   19.0 1:22  Chemin Saint-Louis, the first flat stretch after the climbs, water at 19.3
-//   26.7 1:54  river road (Chemin du Foulon), water at 27
-//   32.6 2:19  Boulevard Champlain, water at 32.9
-export const SUGGESTED_BARS = [8.1, 19.0, 26.7, 32.6];
-const OLD_PLACEHOLDER_BARS = '[8.1,14.8,24.4,32.6]';
+// The fuel plan. One bar before the start; on the course the three others fit around the
+// race's two gel stations: bar, gel (15.1), bar, gel (27), bar, a fuel stop every 18-32
+// min. Each bar on flat ground, 300 m before water, none in the tunnel or on the km 10.7-16
+// climb. An XACT Energy bar is 25 g of carbs; the Performance ones add 50 mg of caffeine:
+// before the start, and for the second half (it peaks 45-60 min after eating it).
+//   before the start (~7:20)  caffeine bar
+//   8.1   0:34  bar           flat riverside, water at 8.4
+//   15.1  1:04  race gel
+//   22.6  1:36  caffeine bar  Route Verte, flat, water at 22.9: peaks for km 30-38
+//   27    1:54  race gel
+//   32.6  2:19  caffeine bar  Boulevard Champlain, flat, water at 32.9: the last 10 km
+export const SUGGESTED_BARS = [{ km: 8.1, caf: false }, { km: 22.6, caf: true }, { km: 32.6, caf: true }];
+// earlier suggestions nobody edited move to the new plan
+const OLD_SUGGESTIONS = ['[8.1,14.8,24.4,32.6]', '[8.1,19,26.7,32.6]'];
 
 export const DEFAULT_SETTINGS = {
   target: 2 * 3600 + 59 * 60 + 30, // race finish target (s)
@@ -22,7 +27,9 @@ export const DEFAULT_SETTINGS = {
   voiceMode: 'offpace',             // 'offpace' (only when 10 s+ off), 'every' (voiceEvery), 'off'
   voiceEvery: 1000,                // metres between spoken gaps in 'every' mode
   voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
-  bars: SUGGESTED_BARS.slice(),    // official km where you eat a bar (Settings)
+  bars: SUGGESTED_BARS.map((b) => ({ ...b })), // [{km, caf}] bars on the course (Settings)
+  preBar: 'caf',                   // before the start: 'caf', 'bar' or 'none'
+  raceGels: true,                  // take the race's gels (km 15.1 and 27): reminders
   theme: 'mono',                   // colour theme (js/theme.js)
   pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun
@@ -42,8 +49,10 @@ export function loadSettings() {
   delete s.voice;
   delete s.panel;
   // before voice modes: 0 meant off; 1 km was the default and becomes "only when off pace"
-  // the first, unchecked placeholder bars move to the spots chosen on the course
-  if (JSON.stringify(s.bars) === OLD_PLACEHOLDER_BARS) s.bars = SUGGESTED_BARS.slice();
+  if (Array.isArray(s.bars)) {
+    if (OLD_SUGGESTIONS.includes(JSON.stringify(s.bars))) s.bars = SUGGESTED_BARS.map((b) => ({ ...b }));
+    else s.bars = s.bars.map((b) => (typeof b === 'number' ? { km: b, caf: false } : b)).filter((b) => b && Number.isFinite(b.km));
+  }
   if (s.voiceMode === undefined && s.voiceEvery !== undefined) {
     if (s.voiceEvery === 0) { s.voiceMode = 'off'; s.voiceEvery = 1000; }
     else if (s.voiceEvery !== 1000) s.voiceMode = 'every';
@@ -53,20 +62,26 @@ export function loadSettings() {
 
 export function saveSettings(s) { set(KEY_SETTINGS, JSON.stringify(s)); }
 
-// "8.1, 14.8 24,4" -> [8.1, 14.8, 24.4]: commas or spaces between numbers, and a decimal
-// comma is fine too ("24,4" alone).
-export function parseKms(text, maxKm) {
-  const out = [];
+// "8.1, 22.6c 32,6c" -> [{km: 8.1}, {km: 22.6, caf}, {km: 32.6, caf}]: commas or spaces
+// between numbers, a decimal comma is fine too ("24,4" alone), "c" after the km marks a
+// caffeinated bar.
+export function parseBars(text, maxKm) {
+  const out = new Map();
   for (let tok of String(text).split(/[\s;]+/)) {
     tok = tok.replace(/^,+|,+$/g, '');
     if (!tok) continue;
-    const parts = /^\d+,\d+$/.test(tok) ? [tok.replace(',', '.')] : tok.split(',');
+    const parts = /^\d+,\d+c?$/i.test(tok) ? [tok.replace(',', '.')] : tok.split(',');
     for (const p of parts) {
-      const v = Number(p);
-      if (Number.isFinite(v) && v > 0 && v < maxKm) out.push(Math.round(v * 10) / 10);
+      const caf = /c$/i.test(p);
+      const v = Number(p.replace(/c$/i, ''));
+      if (Number.isFinite(v) && v > 0 && v < maxKm) out.set(Math.round(v * 10) / 10, caf);
     }
   }
-  return [...new Set(out)].sort((a, b) => a - b);
+  return [...out].sort((a, b) => a[0] - b[0]).map(([km, caf]) => ({ km, caf }));
+}
+
+export function fmtBars(bars) {
+  return (bars || []).map((b) => `${b.km.toFixed(1)}${b.caf ? 'c' : ''}`).join(', ');
 }
 
 export function loadRun() {
