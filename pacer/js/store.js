@@ -13,13 +13,13 @@ const TRACK_PREFIX = 'pacer.track.';
 // carbs; the Performance ones (CAF) add 50 mg of caffeine: one before the start (it peaks
 // 45-60 min after), two for the second half. The race gels count as ~25 g each.
 //   before the start (~7:20)  CAF
-//   4.8   0:20  DECAF   Limoilou, water at 5.8
-//   10.1  0:42  DECAF   Saint-Charles river, flat, water at 11.1
+//   4.8   0:20  REG   Limoilou, water at 5.8
+//   10.1  0:42  REG   Saint-Charles river, flat, water at 11.1
 //   15.1  1:05  race gel
 //   21.9  1:34  CAF     gentle downhill (-3.9 %), water at 22.9: kicks in for km 30-42
 //   27    1:55  race gel
 //   31.9  2:16  CAF     Boulevard Champlain, flat, water at 32.9: the last 10 km
-// In the race: 4 bars + 2 gels = ~150 g, ~50 g/h; caffeine 150 mg. The sixth bar (DECAF)
+// In the race: 4 bars + 2 gels = ~150 g, ~50 g/h; caffeine 150 mg. The sixth bar (REG)
 // is a spare.
 export const SUGGESTED_BARS = [
   { km: 4.8, caf: false }, { km: 10.1, caf: false }, { km: 21.9, caf: true }, { km: 31.9, caf: true },
@@ -37,7 +37,6 @@ export const DEFAULT_SETTINGS = {
   voiceMode: 'offpace',             // 'offpace' (only when 10 s+ off), 'every' (voiceEvery), 'off'
   voiceEvery: 1000,                // metres between spoken gaps in 'every' mode
   voiceBand: 5,                    // 'offpace': first warning at 5 or 10 s off the ghost
-  voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
   bars: SUGGESTED_BARS.map((b) => ({ ...b })), // [{km, caf}] bars on the course, announced there
   preBar: 'caf',                   // before the start: 'caf', 'bar' or 'none'
   raceGels: true,                  // take the race's gels (km 15.1 and 27): "Gel in 200 meters"

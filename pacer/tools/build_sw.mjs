@@ -8,9 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const include = ['index.html', 'app.css', 'manifest.webmanifest', 'js', 'vendor', 'fonts', 'glyphs', 'icons',
-  'data/course.json', 'data/basemap.pmtiles', 'data/practice-graph.bin', 'data/practice-dem.bin', 'data/practice-dest.json',
-  'voice'];
-const skip = (p) => /(LICENSE|\.txt$|\.map$|\.md$|voice[\\/]index\.json$)/.test(p);
+  'data/course.json', 'data/basemap.pmtiles', 'data/practice-graph.bin', 'data/practice-dem.bin', 'data/practice-dest.json'];
+const skip = (p) => /(LICENSE|\.txt$|\.map$|\.md$)/.test(p);
 
 function walk(p, out) {
   const st = statSync(p);

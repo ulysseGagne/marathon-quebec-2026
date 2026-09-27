@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
-import { gapClips, spokenGap, offPaceCue, offPaceConfig } from '../js/gap.js';
+import { spokenGap, offPaceCue, offPaceConfig } from '../js/gap.js';
 import { parseBars, fmtBars, SUGGESTED_BARS } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
 import { mulberry32, gauss } from '../js/sim.js';
@@ -11,8 +11,6 @@ import { raceWind, forecastUrl } from '../js/weather.js';
 
 const spec = JSON.parse(readFileSync(new URL('../data/course.json', import.meta.url)));
 const course = new Course(spec);
-const voiceDir = new URL('../voice/', import.meta.url);
-const clip = (id) => existsSync(new URL(`${id}.mp3`, voiceDir));
 
 test('start line: the crossing that led somewhere, not GPS noise while standing at the line', () => {
   for (const seed of [1, 2, 3, 4, 5]) {
@@ -46,28 +44,13 @@ test('start line: a warm-up stride across the line and back is a separate pass',
   assert.equal(tr.crossingOf(0, gunT - 30000), all[1]);
 });
 
-test('voice: every gap and cue the app says has a recorded clip', () => {
-  for (let g = -599; g <= 599; g++) {
-    const ids = gapClips(g);
-    assert.ok(ids && ids.length, `no clips for ${g}`);
-    for (const id of ids) assert.ok(clip(id), `missing voice/${id}.mp3 for ${g} (${spokenGap(g)})`);
-  }
-  assert.equal(gapClips(640), null); // more than 9 minutes: the iPhone voice reads it
-  assert.deepEqual(gapClips(3.4), ['b3']);
-  assert.deepEqual(gapClips(-1), ['a1']);
-  assert.deepEqual(gapClips(0.2), ['pace']);
-  assert.deepEqual(gapClips(100), ['m1', 'b40']);
-  assert.deepEqual(gapClips(-120), ['m2', 'ahead']);
-  // fixed cues named in the app
+test('voice: the bar and aid-station calls, spoken in full', () => {
   const app = readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
-  const ids = new Set(['about', 'every250', 'every500', 'every1000', 'every2000']);
-  for (const m of app.matchAll(/clips: \[((?:'[a-z0-9_]+'(?:, )?)+)\]/g)) {
-    for (const id of m[1].split(', ')) ids.add(id.slice(1, -1));
+  for (const phrase of ['Take caffeinated bar.', 'Take regular bar.', 'Water in 200 meters.', 'Gel in 200 meters.', 'On pace.']) {
+    assert.ok(app.includes(`'${phrase}'`), phrase);
   }
-  // and the ones pushed as a choice: clips.push(x ? 'a' : 'b')
-  for (const m of app.matchAll(/clips\.push\([^)]*?'([a-z0-9_]+)' : '([a-z0-9_]+)'\)/g)) ids.add(m[1]).add(m[2]);
-  for (const id of ['take_caf', 'take_decaf', 'water200', 'gel200']) assert.ok(ids.has(id), `app never plays ${id}`);
-  for (const id of ids) assert.ok(clip(id), `missing voice/${id}.mp3`);
+  assert.ok(!/decaf/i.test(app), 'no more "decaffeinated" or DECAF');
+  assert.ok(!/clips/.test(app), 'no recorded clips left');
 });
 
 test('bars: km list typed in Settings, c for caffeine', () => {
@@ -192,7 +175,7 @@ test('fuel: each suggested bar is 1 km before water, on easy ground, and fits ar
   // about 50 g of carbs an hour in the race (25 g per bar or gel)
   const perHour = ((SUGGESTED_BARS.length + gels.length) * 25) / (plan.timeAt(course.total) / 3600);
   assert.ok(perHour >= 45 && perHour <= 60, `${perHour.toFixed(0)} g/h`);
-  // caffeine: before the start plus two bars in the second half; 3 CAF + 2 DECAF of 6 bars
+  // caffeine: before the start plus two bars in the second half; 3 CAF + 2 REG of 6 bars
   assert.equal(SUGGESTED_BARS.filter((b) => b.caf).length, 2);
   assert.ok(SUGGESTED_BARS.filter((b) => b.caf).every((b) => b.km > 21));
   assert.equal(SUGGESTED_BARS.filter((b) => !b.caf).length, 2);

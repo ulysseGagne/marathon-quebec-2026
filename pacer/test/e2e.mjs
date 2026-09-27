@@ -73,23 +73,6 @@ const atStart = await page.evaluate(() => window.__pacer.S.map.map.queryRendered
 console.log('at the start line:', JSON.stringify(atStart));
 if (!atStart.includes('START') || !atStart.includes('pre-start bar')) errors.push('START label or pre-start bar hidden');
 
-// every recorded voice clip decodes
-const clipCheck = await page.evaluate(async () => {
-  const ids = Object.keys(await (await fetch('voice/index.json')).json());
-  const ctx = new OfflineAudioContext(1, 22050, 22050);
-  const bad = [];
-  let secs = 0;
-  for (const id of ids) {
-    try {
-      const b = await ctx.decodeAudioData(await (await fetch(`voice/${id}.mp3`)).arrayBuffer());
-      secs += b.duration;
-      if (!(b.duration > 0.2 && b.duration < 4)) bad.push(`${id}:${b.duration}`);
-    } catch (e) { bad.push(id); }
-  }
-  return { n: ids.length, bad, secs: Math.round(secs) };
-});
-console.log('voice clips:', JSON.stringify(clipCheck));
-if (clipCheck.bad.length || clipCheck.n < 200) errors.push(`voice clips failed: ${clipCheck.bad.join(' ')}`);
 
 // bars: the default plan shows on the map
 await page.evaluate(() => { window.__pacer.S.follow = false; window.__pacer.S.map.overview(); });
@@ -97,7 +80,7 @@ await sleep(1500);
 const barsShown = await page.evaluate(() => {
   const m = window.__pacer.S.map.map;
   const f = m.queryRenderedFeatures({ layers: ['bars'] });
-  return { n: f.length, pre: f.filter((x) => x.properties.pre).length, caf: f.filter((x) => x.properties.caf).length, images: ['caf-pill', 'decaf-pill'].every((id) => m.hasImage(id)) };
+  return { n: f.length, pre: f.filter((x) => x.properties.pre).length, caf: f.filter((x) => x.properties.caf).length, images: ['caf-pill', 'reg-pill'].every((id) => m.hasImage(id)) };
 });
 console.log('bar markers on the overview:', JSON.stringify(barsShown));
 if (barsShown.n !== 5 || barsShown.pre !== 1 || barsShown.caf !== 3 || !barsShown.images) errors.push('bar markers missing');
@@ -157,7 +140,7 @@ await shot('02d-wind-chip-used');
 await page.evaluate(() => { const { S } = window.__pacer; S.settings.wind = { fromDeg: 45, kmh: 0 }; S.settings.windSource = null; });
 await page.click('[data-open="settings"]');
 await sleep(400);
-await page.evaluate(() => document.querySelector('#set-mix').scrollIntoView({ block: 'start' }));
+await page.evaluate(() => document.querySelector('#set-vmode').scrollIntoView({ block: 'start' }));
 await sleep(300);
 await shot('02b-settings-voice');
 await page.click('#sheet-settings [data-close]');
@@ -326,7 +309,7 @@ await shot('13-finish');
 spoken.push(...(await page.evaluate(() => window.__spoken)));
 const how = await page.evaluate(() => window.__how);
 console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)), '| bars:', spoken.filter((t) => /bar/.test(t)).length,
-  '| recorded clips', how.filter((h) => h === 'clips').length, 'iPhone voice', how.filter((h) => h === 'speech').length);
+  '| iPhone voice', how.filter((h) => h === 'speech').length);
 // default voice: only when off pace (10 s or more), both ways, "On pace." at the ghost
 const gapsSaid = spoken.map((t) => /(\d+) seconds? (behind|ahead)/.exec(t)).filter(Boolean).map((m) => Number(m[1]));
 console.log('off-pace voice said gaps:', JSON.stringify(gapsSaid), '| on pace:', spoken.filter((t) => /^On pace/.test(t)).length);
@@ -342,14 +325,14 @@ if (!gapsSaid.length) errors.push('voice never said the gap');
 if (gapsSaid.some((g) => g < 5)) errors.push(`off-pace voice spoke inside 5 s: ${JSON.stringify(gapsSaid)}`);
 // bars 1 km before water, every aid station 200 m before it
 const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
-console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'DECAF', nSaid(/Take decaffeinated bar/), 'water', nSaid(/Water in 200 meters/), 'gel', nSaid(/Gel in 200 meters/));
-if (nSaid(/Take caffeinated bar/) !== 2 || nSaid(/Take decaffeinated bar/) !== 2) errors.push('bar calls');
+console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'REG', nSaid(/Take regular bar/), 'water', nSaid(/Water in 200 meters/), 'gel', nSaid(/Gel in 200 meters/));
+if (nSaid(/Take caffeinated bar/) !== 2 || nSaid(/Take regular bar/) !== 2) errors.push('bar calls');
 if (nSaid(/Water in 200 meters/) !== 13 || nSaid(/Gel in 200 meters/) !== 2) errors.push('water calls');
 const statuses = await page.evaluate(() => [...window.__status]);
-for (const re of [/^DECAF bar in \d+ m$/, /^CAF bar now$/, /^Water in \d+ m$/, /^Gel in \d+ m$/, /^Water: now$/]) {
+for (const re of [/^REG bar in \d+ m$/, /^CAF bar now$/, /^Water in \d+ m$/, /^Gel in \d+ m$/, /^Water: now$/]) {
   if (!statuses.some((t) => re.test(t))) errors.push(`status line never showed ${re}`);
 }
-if (how.filter((h) => h === 'clips').length < 5) errors.push('recorded clips not used');
+if (how.length < 20 || how.some((h) => h !== 'speech')) errors.push('not all spoken in the iPhone voice');
 const finRow = await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish));
 if (!(JSON.parse(finRow).elapsed < 10800)) errors.push('demo race did not finish under 3:00');
 console.log('finish at virtual', fin, await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));

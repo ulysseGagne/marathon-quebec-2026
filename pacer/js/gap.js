@@ -59,19 +59,6 @@ export function spokenGap(sec) {
   return `${amount} ${sec > 0 ? 'behind' : 'ahead'}`;
 }
 
-// The same words as recorded clip ids (voice/*.mp3), or null when there is no clip
-// (more than 9 minutes off: then the iPhone voice reads the text).
-export function gapClips(sec) {
-  const r = Math.round(sec);
-  const a = Math.abs(r);
-  if (a === 0) return ['pace'];
-  const side = r > 0 ? 'b' : 'a';
-  if (a < 100) return [`${side}${a}`];
-  const m = Math.floor(a / 60), s = a % 60;
-  if (m > 9) return null;
-  return s ? [`m${m}`, `${side}${s}`] : [`m${m}`, r > 0 ? 'behind' : 'ahead'];
-}
-
 // Voice "only when off pace". Warnings start `band` seconds from the ghost (5 or 10,
 // Settings), either way, then come at every 5 s step as the gap gets worse and as it gets
 // better: 5, 10, 15 seconds behind… then 10, 5 as you come back (the same ahead). "On pace"

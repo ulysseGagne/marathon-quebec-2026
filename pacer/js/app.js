@@ -3,7 +3,7 @@
 // where you are on the course.
 import { Course } from './course.js';
 import { Tracker } from './tracker.js';
-import { GapDisplay, fmtGap, spokenGap, gapClips, offPaceCue, offPaceLevel, offPaceConfig } from './gap.js';
+import { GapDisplay, fmtGap, spokenGap, offPaceCue, offPaceLevel, offPaceConfig } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
 import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
@@ -61,7 +61,6 @@ async function boot() {
   S.settings.theme = themeName(S.settings.theme);
   applyTheme(S.settings.theme);
   S.voice.enabled = voiceMode() !== 'off';
-  S.voice.setMix(S.settings.voiceMix !== false);
   registerSW();
   try {
     const spec = await (await fetch('data/course.json')).json();
@@ -439,10 +438,10 @@ async function beginRun(run) {
   setupRunObjects();
   enterPhase('running');
   const early = clock.now() < run.t0;
-  if (run.rehearsal) S.voice.say('Live rehearsal. The gun is in one minute.', { clips: ['rehearsal'] });
-  else if (early) S.voice.say('Live mode. Waiting for the gun.', { clips: ['live_wait'] });
-  else if (run.kind === 'race') S.voice.say('Go. Pacer running.', { clips: ['go_run'] });
-  else S.voice.say('Go.', { clips: ['go'] });
+  if (run.rehearsal) S.voice.say('Live rehearsal. The gun is in one minute.');
+  else if (early) S.voice.say('Live mode. Waiting for the gun.');
+  else if (run.kind === 'race') S.voice.say('Go. Pacer running.');
+  else S.voice.say('Go.');
 }
 
 function startManual() {
@@ -471,7 +470,7 @@ function stopRun() {
   if (S.track) S.track.flush();
   if (!r.sim) clearRun();
   S.wake.disable();
-  S.voice.say('Pacer stopped.', { clips: ['stopped'] });
+  S.voice.say('Pacer stopped.');
   if (S.sim) endSim(false);
   S.run = null;
   S.track = null;
@@ -561,14 +560,14 @@ function runningFrame(now, dt) {
   // LIVE rehearsal: there is no real gun, so the voice gives it
   if (r.rehearsal && !S.goSaid && el >= 0) {
     S.goSaid = true;
-    if (el < 5) S.voice.say('Go!', { force: true, clips: ['go'] });
+    if (el < 5) S.voice.say('Go!', { force: true });
   }
   // what to say this frame: a bar, the next aid station, the gap every N metres
-  const words = [], clips = [];
+  const words = [];
   const bar = barDue(d, el);
-  if (bar) { words.push(bar.caf ? 'Take caffeinated bar.' : 'Take decaffeinated bar.'); clips.push(bar.caf ? 'take_caf' : 'take_decaf'); }
+  if (bar) words.push(bar.caf ? 'Take caffeinated bar.' : 'Take regular bar.');
   const aid = waterDue(d, el);
-  if (aid) { const gel = isGel(aid); words.push(gel ? 'Gel in 200 meters.' : 'Water in 200 meters.'); clips.push(gel ? 'gel200' : 'water200'); }
+  if (aid) words.push(isGel(aid) ? 'Gel in 200 meters.' : 'Water in 200 meters.');
   const every = voiceEvery();
   if (every && d !== null && el > 0) {
     const k = Math.floor(d / every);
@@ -578,9 +577,7 @@ function runningFrame(now, dt) {
       // (while catching up after a pause, catchUp() speaks instead)
       if (!r.finish && el > 20 && !S.resume) {
         const g = S.gap.state().value ?? 0;
-        const gc = gapClips(g);
         words.push((estimating ? 'About ' : '') + spokenGap(g));
-        if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
       }
     }
   }
@@ -592,10 +589,10 @@ function runningFrame(now, dt) {
     const cue = offPaceCue(S.alert, g.shown, offPace());
     if (cue) {
       S.alertAt = now;
-      sayCue(cue, estimating, words, clips);
+      sayCue(cue, estimating, words);
     }
   }
-  if (words.length && !r.finish) S.voice.say(words.join(' '), { clips: clips.length ? clips : null });
+  if (words.length && !r.finish) S.voice.say(words.join(' '));
   // remember where you are (for re-acquisition after a reload)
   if (est && !S.free && !r.sim && est.mode === 'gps' && Date.now() - (S.lastPosSaved || 0) > 15000) {
     S.lastPosSaved = Date.now();
@@ -619,12 +616,9 @@ function runningFrame(now, dt) {
 // The off-pace rules with the first warning at 5 or 10 s (Settings)
 function offPace() { return offPaceConfig(S.settings.voiceBand === 10 ? 10 : 5); }
 
-// An off-pace cue as words and clips: "15 seconds behind", "On pace."
-function sayCue(cue, estimating, words, clips) {
-  if (cue.pace) { words.push('On pace.'); clips.push('pace'); return; }
-  const gc = gapClips(cue.gap);
-  words.push((estimating ? 'About ' : '') + spokenGap(cue.gap));
-  if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
+// An off-pace cue in words: "15 seconds behind", "On pace."
+function sayCue(cue, estimating, words) {
+  words.push(cue.pace ? 'On pace.' : (estimating ? 'About ' : '') + spokenGap(cue.gap));
 }
 
 // After iOS paused the app (screen locked, another app in front), say where you stand as
@@ -645,19 +639,19 @@ function catchUp(now, raw, est) {
     const shown = Math.round(g);
     if (S.run.finish || raw === null) return;
     if (voiceMode() !== 'offpace') {
-      S.voice.say(spokenGap(g), { clips: gapClips(g) });
+      S.voice.say(spokenGap(g));
       S.caughtUp = { at: now, gap: shown, said: spokenGap(g) };
       return;
     }
     const cue = offPaceCue(S.alert, shown, offPace()) || (Math.abs(shown) >= offPace().band ? { gap: shown } : null);
-    const words = [], clips = [];
-    if (cue) { sayCue(cue, false, words, clips); S.voice.say(words.join(' '), { clips }); S.alertAt = now; }
+    const words = [];
+    if (cue) { sayCue(cue, false, words); S.voice.say(words.join(' ')); S.alertAt = now; }
     S.caughtUp = { at: now, gap: shown, said: words.join(' ') || null };
   }
 }
 
 // Fuel and water on the marathon. Each bar is announced where you planned it, 1 km before
-// an aid station: "Take caffeinated bar" or "Take decaffeinated bar" (about 2 min to eat
+// an aid station: "Take caffeinated bar" or "Take regular bar" (about 2 min to eat
 // it, 2 more to get ready). Every aid station is announced 200 m before it: "Water in 250
 // meters", or "Gel in 200 meters" at the two gel stations.
 const WATER_CALL = 200;
@@ -691,13 +685,13 @@ function waterDue(d, el) {
   return null;
 }
 
-// Status line: "DECAF bar in 240 m", "DECAF bar now" while you eat it, "Water in 180 m"
+// Status line: "REG bar in 240 m", "REG bar now" while you eat it, "Water in 180 m"
 // (or "Gel in 180 m") before each aid station, "Water: now" at it.
 function fuelStatus(d) {
   if (d === null) return '';
   const m = (x) => `${Math.max(10, Math.round(x / 10) * 10)} m`;
   for (const b of barList()) {
-    const to = b.km * 1000 - d, name = b.caf ? 'CAF bar' : 'DECAF bar';
+    const to = b.km * 1000 - d, name = b.caf ? 'CAF bar' : 'REG bar';
     if (to > 0 && to <= 300) return `${name} in ${m(to)}`;
     if (to <= 0 && to > -450) return `${name} now`;
   }
@@ -743,7 +737,7 @@ function detectCrossing(now, el) {
     if (c && c <= r.gunMs + 25 * 60000) {
       r.crossing = c;
       setT0(c, 'chip', `Chip time: you crossed the start line at ${fmtTimeOfDay(c, true)}.`);
-      S.voice.say('Chip time.', { clips: ['chip'] });
+      S.voice.say('Chip time.');
     }
     return;
   }
@@ -1312,7 +1306,7 @@ function bindSettings() {
     S.alert = { level: 0 };
     S.voice.unlock();
     const sample = S.settings.voiceBand;
-    S.voice.say(`${spokenGap(sample)}.`, { force: true, clips: gapClips(sample) });
+    S.voice.say(`${spokenGap(sample)}.`, { force: true });
     renderSettings();
   });
   $('#set-voice').addEventListener('click', (e) => {
@@ -1334,15 +1328,6 @@ function bindSettings() {
         : `Could not get the forecast (${e.message}). Set the wind by hand, or leave it.`;
     }
     b.disabled = false;
-  });
-  $('#set-mix').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-mix]'); if (!b) return;
-    S.settings.voiceMix = b.dataset.mix === '1';
-    saveSettings(S.settings);
-    S.voice.setMix(S.settings.voiceMix);
-    S.voice.unlock();
-    S.voice.say('3 seconds behind.', { force: true, clips: ['b3'] });
-    renderSettings();
   });
   $('#set-bars').addEventListener('change', (e) => {
     S.settings.bars = parseBars(e.target.value, S.marathon.total / 1000);
@@ -1425,7 +1410,7 @@ function fuelPlanHtml(s) {
   const grams = (onCourse + gels.length) * 25;
   const perHour = Math.round(grams / (plan.timeAt(c.total) / 3600));
   rows.push(`<div class="bar-row total">In the race: ${onCourse} bar${onCourse === 1 ? '' : 's'}${gels.length ? ` + ${gels.length} gels` : ''} × ~25 g ≈ ${grams} g of carbs, ${perHour} g/h${pre !== 'none' ? ', plus 25 g before the start' : ''}. ` +
-    `Caffeine ${nCaf * 50} mg (${nCaf} CAF × 50 mg). ${nBars} bar${nBars === 1 ? '' : 's'} in all: ${nCaf} CAF, ${nBars - nCaf} DECAF.</div>`);
+    `Caffeine ${nCaf * 50} mg (${nCaf} CAF × 50 mg). ${nBars} bar${nBars === 1 ? '' : 's'} in all: ${nCaf} CAF, ${nBars - nCaf} REG.</div>`);
   return rows.join('');
 }
 
@@ -1435,7 +1420,7 @@ function showBars() {
   if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars, S.run ? 'none' : S.settings.preBar || 'caf');
 }
 
-function pillHtml(caf) { return `<span class="pill">${caf ? 'CAF' : 'DECAF'}</span>`; }
+function pillHtml(caf) { return `<span class="pill">${caf ? 'CAF' : 'REG'}</span>`; }
 
 function fmtDist(m) { return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`; }
 
@@ -1522,20 +1507,15 @@ function renderSettings() {
   const band = offPace().band;
   $('#set-band').hidden = (s.voiceMode || 'offpace') !== 'offpace';
   $('#set-band').innerHTML = [5, 10].map((b) => `<button type="button" data-band="${b}" class="${band === b ? 'on' : ''}">Warn from ${b} s</button>`).join('');
-  const mix = s.voiceMix !== false;
-  $('#set-mix').innerHTML = `<button type="button" data-mix="1" class="${mix ? 'on' : ''}">Keeps playing</button><button type="button" data-mix="0" class="${mix ? '' : 'on'}">Pauses</button>`;
-  $('#set-mix-note').textContent = mix
-    ? 'A recorded voice talks over Apple Music, which keeps playing. The side switch must be on ring, not silent (on silent this voice is muted); Do Not Disturb keeps calls quiet.'
-    : 'The iPhone\'s own voice: Apple Music pauses while it talks, and may not restart by itself.';
   const bars = s.bars || [];
   const barsEl = $('#set-bars');
   if (document.activeElement !== barsEl) barsEl.value = fmtBars(bars);
   $('#set-bars-list').innerHTML = fuelPlanHtml(s);
   $('#set-fuel-opts').innerHTML =
-    `<div class="seg compact">${[['caf', 'CAF bar'], ['bar', 'DECAF bar'], ['none', 'Nothing']].map(([k, t]) => `<button type="button" data-pre="${k}" class="${(s.preBar || 'caf') === k ? 'on' : ''}">${t}</button>`).join('')}</div>` +
+    `<div class="seg compact">${[['caf', 'CAF bar'], ['bar', 'REG bar'], ['none', 'Nothing']].map(([k, t]) => `<button type="button" data-pre="${k}" class="${(s.preBar || 'caf') === k ? 'on' : ''}">${t}</button>`).join('')}</div>` +
     `<div class="seg compact stack">${[['1', 'Take the race gels'], ['0', 'Skip them']].map(([k, t]) => `<button type="button" data-gels="${k}" class="${(s.raceGels !== false) === (k === '1') ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   const gels = S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ');
-  $('#set-bars-note').textContent = `Type the km where each bar is announced, 1 km before an aid station; add “c” for a caffeinated one (21.9c). The map shows them (CAF, DECAF) and the voice says “Take caffeinated bar” or “Take decaffeinated bar” there: about 2 min to eat it, 2 to get ready. Every aid station is announced 200 m before it: “Water in 200 meters”, or “Gel in 200 meters” at km ${gels}. Spots are checked for slope, the tunnels and the station 1 km on.`;
+  $('#set-bars-note').textContent = `Type the km where each bar is announced, 1 km before an aid station; add “c” for a caffeinated one (21.9c). The map shows them (CAF, REG) and the voice says “Take caffeinated bar” or “Take regular bar” there: about 2 min to eat it, 2 to get ready. Every aid station is announced 200 m before it: “Water in 200 meters”, or “Gel in 200 meters” at km ${gels}. Spots are checked for slope, the tunnels and the station 1 km on.`;
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
@@ -1547,7 +1527,7 @@ function renderSettings() {
   $('#set-theme-note').textContent = THEME_NOTES[s.theme];
   $('#set-pocket').innerHTML = pocketButtons();
   $('#set-gun').textContent = fmtTimeOfDay(gunMs(), true);
-  $('#about').textContent = `Version ${VERSION}${S.build ? ` · build ${S.build.slice(0, 7)}` : ''}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles. Voice: Piper (joe, CC0).`;
+  $('#about').textContent = `Version ${VERSION}${S.build ? ` · build ${S.build.slice(0, 7)}` : ''}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles.`;
 }
 
 const VOICE_STEPS = [250, 500, 1000, 2000];
@@ -1585,8 +1565,7 @@ function setVoiceMode(m) {
   else if (m === 'offpace') {
     const g = S.phase === 'running' ? S.gap.state().value : null;
     const say = g === null ? 10 : g;
-    const gc = gapClips(say);
-    S.voice.say(`Only when off pace. ${spokenGap(say)}.`, { force: true, clips: gc ? ['offpace', ...gc] : null });
+    S.voice.say(`Only when off pace. ${spokenGap(say)}.`, { force: true });
   }
 }
 
@@ -1600,8 +1579,7 @@ function setVoiceEvery(m) {
     // a sample on the start screen; the real gap during a run
     const g = (S.phase === 'running' ? S.gap.state().value : null) ?? 3;
     const every = m < 1000 ? `${m} metres` : m === 1000 ? 'kilometre' : `${m / 1000} kilometres`;
-    const gc = gapClips(g);
-    S.voice.say(`Every ${every}. ${spokenGap(g)}.`, { force: true, clips: gc ? [`every${m}`, ...gc] : null });
+    S.voice.say(`Every ${every}. ${spokenGap(g)}.`, { force: true });
   }
 }
 
@@ -1644,7 +1622,7 @@ function renderPlan() {
     const up = c.elevationAt(b) - c.elevationAt(a);
     const notes = [];
     for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`aid ${aid.km}${aid.what ? ` ${aid.what}` : ''}`);
-    for (const bar of S.settings.bars || []) if (bar.km * 1000 > a && bar.km * 1000 <= b) notes.push(`${bar.caf ? 'CAF' : 'DECAF'} bar ${bar.km.toFixed(1)}`);
+    for (const bar of S.settings.bars || []) if (bar.km * 1000 > a && bar.km * 1000 <= b) notes.push(`${bar.caf ? 'CAF' : 'REG'} bar ${bar.km.toFixed(1)}`);
     for (const [ta, tb] of c.tunnels) if (tb - ta > 300 && ta < b && tb > a) notes.push('tunnel');
     const cls = per > flat + 12 ? 'climb' : per < flat - 8 ? 'down' : '';
     rows.push(`<tr class="${cls}"><td>${b === c.total ? '42.2' : k}</td><td class="pace">${fmtPace(split)}</td>` +

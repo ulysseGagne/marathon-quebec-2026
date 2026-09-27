@@ -67,7 +67,7 @@ function icon(w, h, draw) {
 }
 
 // Where a bar is announced: a small black label, white outline and text (CAF for a
-// caffeinated one, DECAF for the others).
+// caffeinated one, REG for the others).
 function barPill(text) {
   const font = '800 11px -apple-system, system-ui, sans-serif';
   const m = document.createElement('canvas').getContext('2d');
@@ -223,7 +223,7 @@ export class MapView {
     m.addSource('course', { type: 'geojson', data: empty, lineMetrics: true });
     m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
     for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends', 'endbars']) m.addSource(id, { type: 'geojson', data: empty });
-    try { m.addImage('decaf-pill', barPill('DECAF'), { pixelRatio: 2 }); m.addImage('caf-pill', barPill('CAF'), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
+    try { m.addImage('reg-pill', barPill('REG'), { pixelRatio: 2 }); m.addImage('caf-pill', barPill('CAF'), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
     try { m.addImage('aid-drop', aidDrop(), { pixelRatio: 2 }); } catch (e) { console.warn('aid icon', e); }
     const round = { 'line-cap': 'round', 'line-join': 'round' };
     // free run: your own trail, bright from the ghost to you
@@ -289,7 +289,7 @@ export class MapView {
     m.addLayer({
       id: 'bars', type: 'symbol', source: 'bars', minzoom: 9,
       layout: {
-        'icon-image': ['case', ['get', 'caf'], 'caf-pill', 'decaf-pill'],
+        'icon-image': ['case', ['get', 'caf'], 'caf-pill', 'reg-pill'],
         'icon-allow-overlap': true, 'icon-ignore-placement': false, // labels keep clear of it
         'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 13, 0.8, 16, 1, 18, 1.2],
         'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
