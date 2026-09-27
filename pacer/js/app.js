@@ -3,7 +3,7 @@
 // where you are on the course.
 import { Course } from './course.js';
 import { Tracker } from './tracker.js';
-import { GapDisplay, fmtGap, spokenGap, gapClips } from './gap.js';
+import { GapDisplay, fmtGap, spokenGap, gapClips, offPaceCue, offPaceLevel } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
 import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
@@ -59,7 +59,7 @@ const S = {
 async function boot() {
   S.settings.theme = themeName(S.settings.theme);
   applyTheme(S.settings.theme);
-  S.voice.enabled = voiceEvery() > 0;
+  S.voice.enabled = voiceMode() !== 'off';
   S.voice.setMix(S.settings.voiceMix !== false);
   registerSW();
   try {
@@ -153,6 +153,8 @@ function setupRunObjects() {
   const r = S.run;
   S.gap.reset();
   S.lastVoiceK = null;
+  S.alert = { level: 0 };
+  S.alertAt = 0;
   S.lastBar = null;
   S.goSaid = false;
   S.resume = null;
@@ -365,6 +367,7 @@ function setT0(t0, source, message) {
   S.run.t0Source = source;
   saveRunState();
   S.gap.reset();
+  S.alert = { level: 0 };
   if (message) toast(message);
 }
 
@@ -457,6 +460,21 @@ function runningFrame(now, dt) {
       }
     }
   }
+  // or only when off pace: quiet within 10 s, then 10, 15, 20… s, and "on pace" when back
+  const g = S.gap.state();
+  if (voiceMode() === 'offpace' && d !== null && el > 30 && !r.finish && !S.resume && g.shown !== null &&
+      now - (S.alertAt || 0) > 20000) {
+    const cue = offPaceCue(S.alert, g.shown);
+    if (cue) {
+      S.alertAt = now;
+      if (cue.pace) { words.push('On pace.'); clips.push('pace'); }
+      else {
+        const gc = gapClips(cue.gap);
+        words.push((estimating ? 'About ' : '') + spokenGap(cue.gap));
+        if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
+      }
+    }
+  }
   if (words.length && !r.finish) S.voice.say(words.join(' '), { clips: clips.length ? clips : null });
   // remember where you are (for re-acquisition after a reload)
   if (est && !S.free && !r.sim && est.mode === 'gps' && Date.now() - (S.lastPosSaved || 0) > 15000) {
@@ -493,6 +511,7 @@ function catchUp(now, raw, est) {
     S.resume = null;
     const g = S.gap.state().value ?? 0;
     if (!S.run.finish && raw !== null) S.voice.say(spokenGap(g), { clips: gapClips(g) });
+    S.alert = { level: offPaceLevel(Math.round(g)) };
   }
 }
 
@@ -521,9 +540,20 @@ function barStatus(d) {
   return '';
 }
 
+// 'offpace' (default), 'every' (every voiceEvery metres) or 'off'; pocket mode never stays
+// silent: there it falls back to 'offpace'.
+function voiceMode() {
+  const m = S.settings.voiceMode || 'offpace';
+  return m === 'off' && S.settings.pocket ? 'offpace' : m;
+}
+
 function voiceEvery() {
-  const v = S.settings.voiceEvery;
-  return v > 0 ? v : S.settings.pocket ? 1000 : 0;
+  return voiceMode() === 'every' ? (S.settings.voiceEvery || 1000) : 0;
+}
+
+function voiceDesc() {
+  const m = voiceMode();
+  return m === 'every' ? `every ${voiceLabel(voiceEvery())}` : m === 'offpace' ? 'when off pace' : 'off';
 }
 
 function pocketOn() {
@@ -531,8 +561,7 @@ function pocketOn() {
 }
 
 function renderPocket() {
-  const every = voiceEvery();
-  $('#pk-sub').textContent = `Voice every ${voiceLabel(every)} · tap to look`;
+  $('#pk-sub').textContent = `Voice ${voiceDesc()} · tap to look`;
 }
 
 // When did you actually cross the start line? LIVE switches to it (chip time); after a
@@ -954,7 +983,9 @@ function renderRunMenu() {
     S.crossHintUntil = 0;
     renderRunMenu();
   }));
+  $('#menu-vmode').innerHTML = voiceModeButtons();
   $('#menu-voice').innerHTML = voiceButtons();
+  $('#menu-voice').hidden = (S.settings.voiceMode || 'offpace') !== 'every';
   $('#menu-theme').innerHTML = themeButtons();
   $('#menu-pocket').innerHTML = pocketButtons();
   const rt = $('#btn-retarget');
@@ -988,9 +1019,15 @@ function bindRunMenu() {
     S.plan = planFor(S.course, S.run);
     saveRunState();
     S.gap.reset();
+    S.alert = { level: 0 };
     toast(`New plan: finish in ${fmtClock(pendingTarget)}. Gap reset to 0 here.`);
     pendingTarget = null;
     renderRunMenu();
+  });
+  $('#menu-vmode').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vm]'); if (!b) return;
+    setVoiceMode(b.dataset.vm);
+    renderRunMenu(); armMenuTimer();
   });
   $('#menu-voice').addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
@@ -1007,7 +1044,7 @@ function bindRunMenu() {
     setPocket(b.dataset.pocket === '1');
     if (S.settings.pocket) {
       closeSheets();
-      toast(`Pocket mode: black screen, voice every ${voiceLabel(voiceEvery())}. Tap the screen to look.`, 5000);
+      toast(`Pocket mode: black screen, voice ${voiceDesc()}. Tap the screen to look.`, 5000);
     } else { renderRunMenu(); armMenuTimer(); }
   });
   $('#btn-export').addEventListener('click', () => exportGpx(S.run));
@@ -1037,6 +1074,12 @@ function bindSettings() {
     const v = Number(b.dataset.gun);
     S.settings.gunOffset = v === 0 ? 0 : S.settings.gunOffset + v; upd(); renderReadyLive(clock.now());
   }));
+  $('#set-vmode').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vm]'); if (!b) return;
+    S.voice.unlock();
+    setVoiceMode(b.dataset.vm);
+    renderSettings();
+  });
   $('#set-voice').addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
     S.voice.unlock();
@@ -1097,7 +1140,9 @@ function renderSettings() {
     $('#set-wind-note').textContent = 'Optional, on race morning: the forecast direction the wind comes FROM and its speed. The ghost eases into headwinds and speeds up with tailwinds, weighted by how exposed each stretch is. Same finish time.';
   }
   $('#set-aid').textContent = `${s.aidSeconds} s`;
+  $('#set-vmode').innerHTML = voiceModeButtons();
   $('#set-voice').innerHTML = voiceButtons();
+  $('#set-voice').hidden = (s.voiceMode || 'offpace') !== 'every';
   const mix = s.voiceMix !== false;
   $('#set-mix').innerHTML = `<button type="button" data-mix="1" class="${mix ? 'on' : ''}">Keeps playing</button><button type="button" data-mix="0" class="${mix ? '' : 'on'}">Pauses</button>`;
   $('#set-mix-note').textContent = mix
@@ -1109,9 +1154,12 @@ function renderSettings() {
   $('#set-bars-note').textContent = bars.length
     ? `${bars.length} bar${bars.length > 1 ? 's' : ''}, shown on the map: ${bars.map((k) => `km ${k.toFixed(1)} (${fmtClock(S.readyPlan.timeAt(k * 1000))})`).join(' · ')}. The voice says “Time for a bar” as you pass each one; the line under the number counts down the last 300 m.`
     : 'No bars. Type the official km where you want to eat one, e.g. 8.1, 14.8, 24.4.';
-  $('#set-voice-note').textContent = s.voiceEvery > 0
-    ? `Every ${voiceLabel(s.voiceEvery)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Nothing else.`
-    : 'No voice (pocket mode still speaks every 1 km).';
+  const vm = s.voiceMode || 'offpace';
+  $('#set-voice-note').textContent = vm === 'offpace'
+    ? 'Quiet while you are within 10 s of the ghost. Then it says the gap at 10, 15, 20… seconds behind or ahead as it gets worse, and “on pace” once you are back within 7 s. Also “time for a bar” at your bars.'
+    : vm === 'every'
+      ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also “time for a bar”.`
+      : 'No voice. (Pocket mode still speaks when off pace.)';
   $('#set-theme').innerHTML = themeButtons();
   $('#set-theme-note').textContent = THEME_NOTES[s.theme];
   $('#set-pocket').innerHTML = pocketButtons();
@@ -1119,11 +1167,17 @@ function renderSettings() {
   $('#about').textContent = `Version ${VERSION}${S.build ? ` · build ${S.build.slice(0, 7)}` : ''}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles. Voice: Piper (joe, CC0).`;
 }
 
-const VOICE_STEPS = [0, 250, 500, 1000, 2000];
-function voiceLabel(m) { return m === 0 ? 'Off' : m < 1000 ? `${m} m` : `${m / 1000} km`; }
+const VOICE_STEPS = [250, 500, 1000, 2000];
+function voiceLabel(m) { return m < 1000 ? `${m} m` : `${m / 1000} km`; }
+
+function voiceModeButtons() {
+  const m = S.settings.voiceMode || 'offpace';
+  return [['off', 'Off'], ['offpace', 'When off pace'], ['every', 'Every…']]
+    .map(([k, t]) => `<button type="button" data-vm="${k}" class="${m === k ? 'on' : ''}">${t}</button>`).join('');
+}
 
 function voiceButtons() {
-  const v = S.settings.voiceEvery;
+  const v = S.settings.voiceEvery || 1000;
   return VOICE_STEPS.map((m) => `<button type="button" data-v="${m}" class="${v === m ? 'on' : ''}">${voiceLabel(m)}</button>`).join('');
 }
 
@@ -1138,10 +1192,26 @@ function pocketButtons() {
   return `<button type="button" data-pocket="0" class="${p ? '' : 'on'}">Off</button><button type="button" data-pocket="1" class="${p ? 'on' : ''}">On</button>`;
 }
 
+function setVoiceMode(m) {
+  S.settings.voiceMode = m;
+  saveSettings(S.settings);
+  S.voice.enabled = voiceMode() !== 'off';
+  S.lastVoiceK = null;
+  S.alert = { level: offPaceLevel(S.gap.state().shown ?? 0) }; // start from where you are
+  if (m === 'every') setVoiceEvery(S.settings.voiceEvery || 1000);
+  else if (m === 'offpace') {
+    const g = S.phase === 'running' ? S.gap.state().value : null;
+    const say = g === null ? 10 : g;
+    const gc = gapClips(say);
+    S.voice.say(`Only when off pace. ${spokenGap(say)}.`, { force: true, clips: gc ? ['offpace', ...gc] : null });
+  }
+}
+
 function setVoiceEvery(m) {
   S.settings.voiceEvery = m;
+  S.settings.voiceMode = 'every';
   saveSettings(S.settings);
-  S.voice.enabled = voiceEvery() > 0;
+  S.voice.enabled = true;
   S.lastVoiceK = null; // count the new interval from here
   if (m > 0) {
     // a sample on the start screen; the real gap during a run
@@ -1163,7 +1233,7 @@ function setTheme(name) {
 function setPocket(on) {
   S.settings.pocket = on;
   saveSettings(S.settings);
-  S.voice.enabled = voiceEvery() > 0;
+  S.voice.enabled = voiceMode() !== 'off';
   S.peekUntil = 0;
   S.lastPanel = {};
 }

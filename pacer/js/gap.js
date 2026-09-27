@@ -71,3 +71,32 @@ export function gapClips(sec) {
   if (m > 9) return null;
   return s ? [`m${m}`, `${side}${s}`] : [`m${m}`, r > 0 ? 'behind' : 'ahead'];
 }
+
+// Voice "only when off pace": quiet while within 10 s of the ghost. It says the gap when it
+// first reaches 10 s, again at 15, 20, 25 s… as it gets worse (behind or ahead), nothing
+// while it improves, and "on pace" once back within 7 s.
+// state = {level}: the last level said (+k behind, -k ahead, 0 inside). shown = the gap on
+// screen (whole seconds, + = behind). Returns {gap} or {pace: true} to say, or null.
+export const OFF_PACE = { band: 10, step: 5, back: 7 };
+
+export function offPaceLevel(shown, { band, step } = OFF_PACE) {
+  const a = Math.abs(shown);
+  return a >= band ? Math.sign(shown) * (1 + Math.floor((a - band) / step)) : 0;
+}
+
+export function offPaceCue(state, shown, cfg = OFF_PACE) {
+  const L = offPaceLevel(shown, cfg);
+  const C = state.level || 0;
+  if (L !== 0 && (Math.sign(L) !== Math.sign(C) || Math.abs(L) > Math.abs(C))) {
+    state.level = L;
+    return { gap: shown };
+  }
+  if (C === 0) return null;
+  const a = Math.abs(shown);
+  if (a <= cfg.back) { state.level = 0; return { pace: true }; }
+  // clearly better than the level last said (3 s of slack, GPS wobbles): step down quietly,
+  // so that getting worse again is said again
+  const down = Math.sign(C) * Math.max(1, Math.abs(offPaceLevel(Math.sign(C) * (a + 3), cfg)));
+  if (Math.abs(down) < Math.abs(C)) state.level = down;
+  return null;
+}

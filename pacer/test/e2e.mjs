@@ -199,9 +199,17 @@ spoken.push(...(await page.evaluate(() => window.__spoken)));
 const how = await page.evaluate(() => window.__how);
 console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)), '| bars:', spoken.filter((t) => /bar/.test(t)).length,
   '| recorded clips', how.filter((h) => h === 'clips').length, 'iPhone voice', how.filter((h) => h === 'speech').length);
-if (!spoken.some((t) => / seconds? (behind|ahead)\.?$|on pace\.?$/i.test(t))) errors.push('voice never said the gap');
+// default voice: only when off pace (10 s or more), and "On pace." when back
+const gapsSaid = spoken.map((t) => /(\d+) seconds? (behind|ahead)/.exec(t)).filter(Boolean).map((m) => Number(m[1]));
+console.log('off-pace voice said gaps:', JSON.stringify(gapsSaid), '| on pace:', spoken.filter((t) => /^On pace/.test(t)).length);
+if (!gapsSaid.length) errors.push('voice never said the gap');
+if (gapsSaid.some((g) => g < 10) && !spoken.some((t) => /unlock|paused/.test(t))) {
+  // (the catch-up after the fake screen lock says the gap whatever it is)
+  const small = spoken.filter((t) => /(\d+) seconds? (behind|ahead)/.test(t) && Number(/(\d+)/.exec(t)[1]) < 10);
+  if (small.length > 1) errors.push(`off-pace voice spoke inside 10 s: ${small.join(' | ')}`);
+}
 if (spoken.filter((t) => /Time for a bar/.test(t)).length !== 4) errors.push('bar cues');
-if (how.filter((h) => h === 'clips').length < 30) errors.push('recorded clips not used');
+if (how.filter((h) => h === 'clips').length < 5) errors.push('recorded clips not used');
 const finRow = await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish));
 if (!(JSON.parse(finRow).elapsed < 10800)) errors.push('demo race did not finish under 3:00');
 console.log('finish at virtual', fin, await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));
@@ -222,7 +230,13 @@ await sleep(3000);
 await p2.screenshot({ path: join(out, '21-practice-route.png') });
 const info2 = await p2.textContent('#pr-info');
 console.log('practice route:', info2);
-await p2.evaluate(() => window.__pacer.startSim(30, { practiceSpec: window.__pacer.S.practiceDraft.spec, seed: 7 }));
+await p2.evaluate(() => {
+  const { S } = window.__pacer;
+  S.settings.voiceMode = 'every'; S.settings.voiceEvery = 250; // the other voice mode
+  const v = S.voice; const say = v.say.bind(v);
+  window.__spoken2 = []; v.say = (t, o) => { window.__spoken2.push(t); say(t, o); };
+  window.__pacer.startSim(30, { practiceSpec: S.practiceDraft.spec, seed: 7 });
+});
 const waitV2 = async (el) => {
   for (let i = 0; i < 900; i++) {
     const v = await p2.evaluate(() => { const { S, clock } = window.__pacer; return S.run ? (clock.now() - S.run.t0) / 1000 : null; });
@@ -244,6 +258,9 @@ for (let i = 0; i < 600; i++) {
 await sleep(800);
 await p2.screenshot({ path: join(out, '24-practice-finish.png') });
 console.log('practice finish', await p2.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));
+const every250 = await p2.evaluate(() => window.__spoken2.filter((t) => /seconds? (behind|ahead)|On pace|on pace/.test(t)).length);
+console.log('voice every 250 m on the 5.2 km practice:', every250, 'times');
+if (every250 < 15) errors.push('voice every 250 m');
 
 // ---- LIVE rehearsal on the same route: countdown, "Go!", then chip time at the start line
 await p2.evaluate(() => { window.__pacer.stopRun(); });

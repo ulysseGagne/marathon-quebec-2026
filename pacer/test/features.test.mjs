@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
-import { gapClips, spokenGap } from '../js/gap.js';
+import { gapClips, spokenGap, offPaceCue } from '../js/gap.js';
 import { parseKms } from '../js/store.js';
 import { withStartLine, practiceSpec } from '../js/practice.js';
 import { mulberry32, gauss } from '../js/sim.js';
@@ -90,4 +90,29 @@ test('LIVE rehearsal route: start line 30 m ahead, official distance from there'
   assert.ok(Math.abs(c.total - r.distance) < 1e-9);
   const p = c.plan({ target: (r.distance / 1000) * 255 });
   assert.ok(Math.abs(p.timeAt(c.total) - (r.distance / 1000) * 255) < 1e-6);
+});
+
+test('voice when off pace: quiet inside ±10 s, then 10, 15, 20…, "on pace" when back', () => {
+  const st = { level: 0 };
+  const said = [];
+  const run = (gaps) => { for (const g of gaps) { const c = offPaceCue(st, g); if (c) said.push(c.pace ? 'pace' : c.gap); } };
+  run([0, 3, -4, 6, 9, 9, 8, 9]);                 // on pace: nothing
+  assert.deepEqual(said, []);
+  run([10, 11, 9, 10, 12, 14]);                   // 10 behind once, no chatter around 10
+  assert.deepEqual(said, [10]);
+  run([15, 16, 18, 20]);                          // worse: 15, 20
+  assert.deepEqual(said, [10, 15, 20]);
+  run([19, 16, 14, 12]);                          // better: quiet
+  assert.deepEqual(said, [10, 15, 20]);
+  run([15]);                                      // wobbling back to 15: not repeated
+  assert.deepEqual(said, [10, 15, 20]);
+  run([11, 15]);                                  // worse again after clearly improving: said again
+  assert.deepEqual(said, [10, 15, 20, 15]);
+  run([11, 8, 7]);                                // back within 7 s: "on pace" once
+  assert.deepEqual(said, [10, 15, 20, 15, 'pace']);
+  run([5, 2, -3, -9]);                            // quiet
+  run([-10, -12, -15]);                           // ahead: 10, 15 ahead
+  assert.deepEqual(said, [10, 15, 20, 15, 'pace', -10, -15]);
+  run([-6]);
+  assert.deepEqual(said.slice(-1), ['pace']);
 });

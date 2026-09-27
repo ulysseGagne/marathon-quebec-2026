@@ -5,11 +5,13 @@ iOS mixes with Apple Music instead of pausing it (the built-in speechSynthesis t
 audio exclusively and stops the music). Voice: Piper en_US-joe-medium (CC0), offline.
 
     pip install piper-tts joe-us-piper-voice lameenc numpy
-    python3 pacer/tools/build_voice.py
+    python3 pacer/tools/build_voice.py          # only clips that are missing
+    python3 pacer/tools/build_voice.py --all    # everything again (synthesis varies a bit)
 """
 import io
 import json
 import os
+import sys
 import wave
 
 import lameenc
@@ -44,6 +46,7 @@ def phrases():
     p['every500'] = 'Every 500 meters.'
     p['every1000'] = 'Every kilometer.'
     p['every2000'] = 'Every 2 kilometers.'
+    p['offpace'] = 'Only when off pace.'
     return p
 
 
@@ -88,9 +91,17 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     voice = PiperVoice.load(joe.model_path(), config_path=joe.config_path())
     cfg = SynthesisConfig(length_scale=0.95)
-    index = {}
+    everything = '--all' in sys.argv
+    try:
+        with open(os.path.join(OUT, 'index.json')) as f:
+            index = json.load(f)
+    except FileNotFoundError:
+        index = {}
     total = 0
     for key, text in phrases().items():
+        path = os.path.join(OUT, f'{key}.mp3')
+        if not everything and key in index and os.path.exists(path):
+            continue
         x, rate = render(voice, text, cfg)
         x = loud(x, rate)
         data = mp3(x, rate)
@@ -100,7 +111,7 @@ def main():
         total += len(data)
     with open(os.path.join(OUT, 'index.json'), 'w') as f:
         json.dump(index, f, separators=(',', ':'))
-    print(f'{len(index)} clips, {total / 1e6:.2f} MB, {sum(index.values()):.0f} s of speech')
+    print(f'{len(index)} clips ({total / 1e6:.2f} MB written now), {sum(index.values()):.0f} s of speech')
 
 
 if __name__ == '__main__':

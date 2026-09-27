@@ -38,14 +38,19 @@ test('settings: old voice on/off and number-style settings migrate', async () =>
   };
   const { loadSettings } = await import('../js/store.js');
   const s = loadSettings();
-  assert.equal(s.voiceEvery, 0);
+  assert.equal(s.voiceMode, 'off');
   assert.equal(s.theme, 'mono');
   assert.equal(s.pocket, false);
   assert.equal(s.target, 10700);
   assert.ok(!('voice' in s) && !('panel' in s));
   stored['pacer.settings.v1'] = JSON.stringify({ voice: true });
-  assert.equal(loadSettings().voiceEvery, 1000);
+  assert.equal(loadSettings().voiceMode, 'offpace');     // the old default moves to the new one
+  stored['pacer.settings.v1'] = JSON.stringify({ voiceEvery: 250 });
+  assert.equal(loadSettings().voiceMode, 'every');       // a real choice is kept
+  assert.equal(loadSettings().voiceEvery, 250);
+  stored['pacer.settings.v1'] = JSON.stringify({ voiceEvery: 0 });
+  assert.equal(loadSettings().voiceMode, 'off');
   delete stored['pacer.settings.v1'];
-  assert.equal(loadSettings().voiceEvery, 1000);
+  assert.equal(loadSettings().voiceMode, 'offpace');
   delete globalThis.localStorage;
 });

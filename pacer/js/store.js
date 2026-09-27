@@ -9,7 +9,8 @@ export const DEFAULT_SETTINGS = {
   target: 2 * 3600 + 59 * 60 + 30, // race finish target (s)
   wind: { fromDeg: 45, kmh: 0 },
   aidSeconds: 0,
-  voiceEvery: 1000,                // metres between spoken gaps (0 = off)
+  voiceMode: 'offpace',             // 'offpace' (only when 10 s+ off), 'every' (voiceEvery), 'off'
+  voiceEvery: 1000,                // metres between spoken gaps in 'every' mode
   voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
   bars: [8.1, 14.8, 24.4, 32.6],   // official km where you eat a bar (placeholder plan: edit in Settings)
   theme: 'mono',                   // colour theme (js/theme.js)
@@ -30,6 +31,11 @@ export function loadSettings() {
   if (typeof s.voice === 'boolean' && s.voiceEvery === undefined) s.voiceEvery = s.voice ? 1000 : 0;
   delete s.voice;
   delete s.panel;
+  // before voice modes: 0 meant off; 1 km was the default and becomes "only when off pace"
+  if (s.voiceMode === undefined && s.voiceEvery !== undefined) {
+    if (s.voiceEvery === 0) { s.voiceMode = 'off'; s.voiceEvery = 1000; }
+    else if (s.voiceEvery !== 1000) s.voiceMode = 'every';
+  }
   return { ...DEFAULT_SETTINGS, ...s, wind: { ...DEFAULT_SETTINGS.wind, ...(s.wind || {}) } };
 }
 

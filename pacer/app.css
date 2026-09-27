@@ -234,6 +234,7 @@ button:disabled { opacity: 0.4; }
 .seg.wrap button { flex: 0 0 calc(25% - 6px); }
 .seg button.on { background: #fff; color: #000; border-color: #fff; }
 .seg.compact { gap: 6px; }
+.seg.stack { margin-top: 8px; }
 .seg.compact button { padding: 0 2px; font-size: 15px; }
 .seg .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; box-shadow: 0 0 0 1px #000; }
 button.wide {

@@ -1,7 +1,7 @@
 // Service worker: everything the pacer needs is cached on first visit, so it works with
 // no connection at all. A new version takes over as soon as it is fully downloaded; the
 // page reloads onto it by itself unless a run is going (then on the next launch).
-const VERSION = 'fac18173635a';
+const VERSION = '63e3fa24bb54';
 const CACHE = `pacer-${VERSION}`;
 const ASSETS = [
   "./",
@@ -263,6 +263,7 @@ const ASSETS = [
   "voice/m7.mp3",
   "voice/m8.mp3",
   "voice/m9.mp3",
+  "voice/offpace.mp3",
   "voice/pace.mp3",
   "voice/rehearsal.mp3",
   "voice/stopped.mp3"
