@@ -137,6 +137,14 @@
         <div class="set-title">Voice every</div>
         <div class="seg compact" id="set-voice"></div>
         <p class="muted small" id="set-voice-note"></p>
+        <div class="set-title sub">Apple Music while the voice talks</div>
+        <div class="seg" id="set-mix"></div>
+        <p class="muted small" id="set-mix-note"></p>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Bars · official km</div>
+        <input id="set-bars" class="text-in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="8.1, 14.8, 24.4, 32.6" aria-label="Kilometres where you eat a bar">
+        <p class="muted small" id="set-bars-note"></p>
       </div>
       <div class="set-block">
         <div class="set-title">Colours</div>
@@ -157,11 +165,10 @@
           <button type="button" data-gun="60">+1 min</button>
           <button type="button" data-gun="0">Reset</button>
         </div>
-        <p class="muted small">Only change this if the start is delayed.</p>
+        <p class="muted small">LIVE starts the clock at this time, then switches to your chip time as you cross the start line, so a gun a few seconds early or late does not matter. Change it only if the start is delayed by minutes.</p>
       </div>
       <div class="set-block">
         <button type="button" class="wide" id="btn-sim">Watch a simulated race (20×)</button>
-        <button type="button" class="wide" data-open="help">How it works · race-day checklist</button>
       </div>
       <p class="muted small" id="about"></p>
     </div>
@@ -195,6 +202,8 @@
       </div>
       <p id="pr-info" class="info-box"></p>
       <button type="button" class="big-btn go" id="pr-start" disabled>START PRACTICE</button>
+      <button type="button" class="wide" id="pr-live" disabled>LIVE rehearsal · gun in 1 min</button>
+      <p class="muted small">LIVE rehearsal runs race-day LIVE mode on this route: a countdown, a “Go!” at the gun (there is no real one), then the switch to chip time as you cross a start line 30 m ahead of where you stand.</p>
       <button type="button" class="wide" id="pr-free">Free run (no route, anywhere)</button>
     </div>
   </div>

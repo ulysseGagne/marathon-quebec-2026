@@ -3,12 +3,12 @@
 // where you are on the course.
 import { Course } from './course.js';
 import { Tracker } from './tracker.js';
-import { GapDisplay, fmtGap, spokenGap } from './gap.js';
+import { GapDisplay, fmtGap, spokenGap, gapClips } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
-import { Graph, Dem, practiceSpec } from './practice.js';
+import { Graph, Dem, practiceSpec, withStartLine } from './practice.js';
 import { FreeRun } from './freerun.js';
-import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx } from './store.js';
+import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseKms } from './store.js';
 import { Wake } from './wake.js';
 import { Voice } from './voice.js';
 import { simulate } from './sim.js';
@@ -60,6 +60,7 @@ async function boot() {
   S.settings.theme = themeName(S.settings.theme);
   applyTheme(S.settings.theme);
   S.voice.enabled = voiceEvery() > 0;
+  S.voice.setMix(S.settings.voiceMix !== false);
   registerSW();
   try {
     const spec = await (await fetch('data/course.json')).json();
@@ -123,7 +124,10 @@ function useCourse(course, plan, { keepTracker = false } = {}) {
     if (S.fix && S.tracker && Date.now() - S.fixReal < 10000) S.tracker.update({ ...S.fix, t: clock.now() });
   }
   if (S.mapReady) {
-    if (course) S.map.setCourse(course); else S.map.clearCourse();
+    if (course) {
+      S.map.setCourse(course);
+      S.map.setBars(course, course.id === 'marathon' ? S.settings.bars : []);
+    } else S.map.clearCourse();
   }
   S.overviewShown = false;
 }
@@ -149,6 +153,8 @@ function setupRunObjects() {
   const r = S.run;
   S.gap.reset();
   S.lastVoiceK = null;
+  S.lastBar = null;
+  S.goSaid = false;
   S.resume = null;
   S.peekUntil = 0;
   S.lastTrailN = 0;
@@ -309,7 +315,10 @@ async function beginRun(run) {
   setupRunObjects();
   enterPhase('running');
   const early = clock.now() < run.t0;
-  S.voice.say(early ? 'Live mode. Waiting for the gun.' : run.kind === 'race' ? 'Go. Pacer running.' : 'Go.');
+  if (run.rehearsal) S.voice.say('Live rehearsal. The gun is in one minute.', { clips: ['rehearsal'] });
+  else if (early) S.voice.say('Live mode. Waiting for the gun.', { clips: ['live_wait'] });
+  else if (run.kind === 'race') S.voice.say('Go. Pacer running.', { clips: ['go_run'] });
+  else S.voice.say('Go.', { clips: ['go'] });
 }
 
 function startManual() {
@@ -320,7 +329,7 @@ function startLive() {
   const now = clock.now();
   const g = gunMs();
   if (g - now > 3 * 3600e3) {
-    toast(`Live mode counts from the ${fmtTimeOfDay(g)} gun on Sunday, October 4 (available from ${fmtTimeOfDay(g - 3 * 3600e3)} that morning). Use START or Practice to try the app.`, 7000);
+    toast(`LIVE counts from the ${fmtTimeOfDay(g)} gun on Sunday, October 4. You can press it from ${fmtTimeOfDay(g - 3 * 3600e3)} that morning, in the corral; it waits for the gun by itself. To try it now: Practice → LIVE rehearsal.`, 8000);
     return;
   }
   if (now - g > 7 * 3600e3) { toast('The race is over — use START.', 4000); return; }
@@ -338,7 +347,7 @@ function stopRun() {
   if (S.track) S.track.flush();
   if (!r.sim) clearRun();
   S.wake.disable();
-  S.voice.say('Pacer stopped.');
+  S.voice.say('Pacer stopped.', { clips: ['stopped'] });
   if (S.sim) endSim(false);
   S.run = null;
   S.track = null;
@@ -422,9 +431,17 @@ function runningFrame(now, dt) {
     raw = S.free ? el - (d / 1000) * r.free.pace : el - S.plan.timeAt(Math.max(0, d));
     S.gap.push(raw, now);
   }
-  if (S.course && S.course.id === 'marathon' && !S.free) detectCrossing(now, el);
+  if (S.course && !S.free && (S.course.id === 'marathon' || r.mode === 'live')) detectCrossing(now, el);
   if (S.resume) catchUp(now, raw, est);
-  // voice every N metres
+  // LIVE rehearsal: there is no real gun, so the voice gives it
+  if (r.rehearsal && !S.goSaid && el >= 0) {
+    S.goSaid = true;
+    if (el < 5) S.voice.say('Go!', { force: true, clips: ['go'] });
+  }
+  // what to say this frame: a bar, the gap every N metres
+  const words = [], clips = [];
+  const bar = barDue(d, el);
+  if (bar) { words.push('Time for a bar.'); clips.push('bar'); }
   const every = voiceEvery();
   if (every && d !== null && el > 0) {
     const k = Math.floor(d / every);
@@ -432,9 +449,15 @@ function runningFrame(now, dt) {
     else if (k > S.lastVoiceK) {
       S.lastVoiceK = k;
       // (while catching up after a pause, catchUp() speaks instead)
-      if (!r.finish && el > 20 && !S.resume) S.voice.say((estimating ? 'About ' : '') + spokenGap(S.gap.state().value ?? 0));
+      if (!r.finish && el > 20 && !S.resume) {
+        const g = S.gap.state().value ?? 0;
+        const gc = gapClips(g);
+        words.push((estimating ? 'About ' : '') + spokenGap(g));
+        if (gc) clips.push(...(estimating ? ['about'] : []), ...gc); else clips.length = 0;
+      }
     }
   }
+  if (words.length && !r.finish) S.voice.say(words.join(' '), { clips: clips.length ? clips : null });
   // remember where you are (for re-acquisition after a reload)
   if (est && !S.free && !r.sim && est.mode === 'gps' && Date.now() - (S.lastPosSaved || 0) > 15000) {
     S.lastPosSaved = Date.now();
@@ -468,8 +491,34 @@ function catchUp(now, raw, est) {
     } else if (now - R.at > 120000) S.resume = null;
   } else if (now - R.fixAt > 3000) {
     S.resume = null;
-    if (!S.run.finish && raw !== null) S.voice.say(spokenGap(S.gap.state().value ?? 0));
+    const g = S.gap.state().value ?? 0;
+    if (!S.run.finish && raw !== null) S.voice.say(spokenGap(g), { clips: gapClips(g) });
   }
+}
+
+// Your bars (Settings), official km on the marathon: passing one says "Time for a bar".
+function barKms() {
+  return S.course && S.course.id === 'marathon' ? (S.settings.bars || []) : [];
+}
+
+function barDue(d, el) {
+  const bars = barKms();
+  if (!bars.length || d === null || el <= 0) return false;
+  const passed = bars.filter((km) => d >= km * 1000).length;
+  if (S.lastBar === null) { S.lastBar = passed; return false; }
+  if (passed > S.lastBar) { S.lastBar = passed; return true; }
+  return false;
+}
+
+// "Bar in 240 m" on the status line when one is coming up, "Bar: now" just after.
+function barStatus(d) {
+  if (d === null) return '';
+  for (const km of barKms()) {
+    const to = km * 1000 - d;
+    if (to > 0 && to <= 300) return `Bar in ${Math.max(10, Math.round(to / 10) * 10)} m`;
+    if (to <= 0 && to > -150) return 'Bar: now';
+  }
+  return '';
 }
 
 function voiceEvery() {
@@ -496,6 +545,7 @@ function detectCrossing(now, el) {
     if (c && c <= r.gunMs + 25 * 60000) {
       r.crossing = c;
       setT0(c, 'chip', `Chip time: you crossed the start line at ${fmtTimeOfDay(c, true)}.`);
+      S.voice.say('Chip time.', { clips: ['chip'] });
     }
     return;
   }
@@ -560,7 +610,9 @@ function renderRunPanel(now, el, d, est, estimating) {
   else if (S.crossHintUntil > now && r.crossing) {
     const diff = (r.crossing - r.t0) / 1000;
     status = `Start line crossed ${Math.abs(diff).toFixed(0)} s ${diff > 0 ? 'after' : 'before'} START · hold ••• to fix`;
-  } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · stay in the corral`;
+  } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · ${r.rehearsal ? 'wait for “Go!”' : 'stay in the corral'}`;
+  else if (r.mode === 'live' && r.t0Source === 'gun' && el >= 0 && el < 600 && d !== null && d < 0) status = `Start line in ${Math.round(-d)} m · then chip time`;
+  else if (barStatus(d)) status = barStatus(d);
   else if (S.fix && S.fix.acc > 25) status = `Weak GPS ±${Math.round(S.fix.acc)} m`;
   else if (S.needWakeTap) status = 'Tap the screen once to keep it awake';
   const full = cls + (estimating ? ' est' : '');
@@ -611,7 +663,10 @@ function renderBadges(el, g) {
       const proj = S.plan.target + g.value;
       parts.push(`<div class="badge big${proj >= 3 * 3600 ? ' over' : ''}">→ ${fmtClock(proj)}</div>`);
     }
-  } else if (r.kind === 'practice') parts.push(`<div class="badge">PRACTICE · ${fmtPace(r.practice.pace)}</div>`);
+  } else if (r.kind === 'practice') {
+    if (r.mode === 'live') parts.push(`<div class="badge">LIVE TEST · ${r.t0Source === 'chip' ? 'CHIP' : r.t0Source === 'gun' ? 'GUN' : 'ADJUSTED'}</div>`);
+    parts.push(`<div class="badge">PRACTICE · ${fmtPace(r.practice.pace)}</div>`);
+  }
   else if (r.kind === 'free') parts.push(`<div class="badge">FREE RUN · ${fmtPace(r.free.pace)}</div>`);
   const html = parts.join('');
   if (S.lastPanel.badges !== html) { $('#badges').innerHTML = html; S.lastPanel.badges = html; }
@@ -874,7 +929,7 @@ function renderRunMenu() {
   $('#menu-summary').textContent = `Clock started at ${fmtTimeOfDay(r.t0, true)}, ${src}. ` +
     (r.kind === 'race' ? `Finish target ${fmtClock(S.plan ? S.plan.target : r.target)}.` : '');
   const sync = [];
-  if (r.kind === 'race') {
+  if (r.kind === 'race' || r.mode === 'live') {
     if (r.crossing && Math.abs(r.crossing - r.t0) > 1000) {
       sync.push(`<button type="button" class="wide hold primary" data-sync="crossing">Hold: start the clock at your start-line crossing (${fmtTimeOfDay(r.crossing, true)})</button>`);
     }
@@ -976,6 +1031,22 @@ function bindSettings() {
     setVoiceEvery(Number(b.dataset.v));
     renderSettings();
   });
+  $('#set-mix').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mix]'); if (!b) return;
+    S.settings.voiceMix = b.dataset.mix === '1';
+    saveSettings(S.settings);
+    S.voice.setMix(S.settings.voiceMix);
+    S.voice.unlock();
+    S.voice.say('3 seconds behind.', { force: true, clips: ['b3'] });
+    renderSettings();
+  });
+  $('#set-bars').addEventListener('change', (e) => {
+    S.settings.bars = parseKms(e.target.value, S.marathon.total / 1000);
+    saveSettings(S.settings);
+    renderSettings();
+    if (S.mapReady && S.course === S.marathon) S.map.setBars(S.marathon, S.settings.bars);
+  });
+  $('#set-bars').addEventListener('blur', () => renderSettings());
   $('#set-theme').addEventListener('click', (e) => {
     const b = e.target.closest('[data-theme]'); if (!b) return;
     setTheme(b.dataset.theme);
@@ -1015,6 +1086,17 @@ function renderSettings() {
   }
   $('#set-aid').textContent = `${s.aidSeconds} s`;
   $('#set-voice').innerHTML = voiceButtons();
+  const mix = s.voiceMix !== false;
+  $('#set-mix').innerHTML = `<button type="button" data-mix="1" class="${mix ? 'on' : ''}">Keeps playing</button><button type="button" data-mix="0" class="${mix ? '' : 'on'}">Pauses</button>`;
+  $('#set-mix-note').textContent = mix
+    ? 'A recorded voice talks over Apple Music, which keeps playing. The side switch must be on ring, not silent (on silent this voice is muted); Do Not Disturb keeps calls quiet.'
+    : 'The iPhone\'s own voice: Apple Music pauses while it talks, and may not restart by itself.';
+  const bars = s.bars || [];
+  const barsEl = $('#set-bars');
+  if (document.activeElement !== barsEl) barsEl.value = bars.map((k) => k.toFixed(1)).join(', ');
+  $('#set-bars-note').textContent = bars.length
+    ? `${bars.length} bar${bars.length > 1 ? 's' : ''}, shown on the map: ${bars.map((k) => `km ${k.toFixed(1)} (${fmtClock(S.readyPlan.timeAt(k * 1000))})`).join(' · ')}. The voice says “Time for a bar” as you pass each one; the line under the number counts down the last 300 m.`
+    : 'No bars. Type the official km where you want to eat one, e.g. 8.1, 14.8, 24.4.';
   $('#set-voice-note').textContent = s.voiceEvery > 0
     ? `Every ${voiceLabel(s.voiceEvery)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Nothing else.`
     : 'No voice (pocket mode still speaks every 1 km).';
@@ -1051,9 +1133,10 @@ function setVoiceEvery(m) {
   S.lastVoiceK = null; // count the new interval from here
   if (m > 0) {
     // a sample on the start screen; the real gap during a run
-    const g = S.phase === 'running' ? S.gap.state().value : null;
+    const g = (S.phase === 'running' ? S.gap.state().value : null) ?? 3;
     const every = m < 1000 ? `${m} metres` : m === 1000 ? 'kilometre' : `${m / 1000} kilometres`;
-    S.voice.say(`Every ${every}. ${g === null ? '3 seconds behind' : spokenGap(g)}.`, { force: true });
+    const gc = gapClips(g);
+    S.voice.say(`Every ${every}. ${spokenGap(g)}.`, { force: true, clips: gc ? [`every${m}`, ...gc] : null });
   }
 }
 
@@ -1096,6 +1179,7 @@ function renderPlan() {
     const up = c.elevationAt(b) - c.elevationAt(a);
     const notes = [];
     for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`💧${aid.km}`);
+    for (const km of S.settings.bars || []) if (km * 1000 > a && km * 1000 <= b) notes.push(`bar ${km.toFixed(1)}`);
     for (const [ta, tb] of c.tunnels) if (tb - ta > 300 && ta < b && tb > a) notes.push('tunnel');
     const cls = per > flat + 12 ? 'climb' : per < flat - 8 ? 'down' : '';
     rows.push(`<tr class="${cls}"><td>${b === c.total ? '42.2' : k}</td><td class="pace">${fmtPace(split)}</td>` +
@@ -1134,6 +1218,18 @@ function bindPractice() {
     S.practiceDraft = null;
     beginRun(newRun('practice', 'manual', { target: (spec.distance / 1000) * pace, practice: { spec, pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0 }));
   });
+  $('#pr-live').addEventListener('click', () => {
+    const dr = S.practiceDraft;
+    if (!dr || !dr.spec) return;
+    const pace = S.settings.practicePace;
+    const spec = withStartLine(dr.spec, 30);
+    const gun = Math.ceil((clock.now() + 60000) / 1000) * 1000;
+    S.practiceDraft = null;
+    beginRun(newRun('practice', 'live', {
+      gunMs: gun, t0: gun, t0Source: 'gun', rehearsal: true,
+      target: (spec.distance / 1000) * pace, practice: { spec, pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0,
+    }));
+  });
   $('#pr-free').addEventListener('click', () => {
     const pace = S.settings.practicePace;
     S.practiceDraft = null;
@@ -1146,6 +1242,7 @@ async function openPractice() {
   renderPracticeStatic();
   $('#pr-info').textContent = 'Loading the street map…';
   $('#pr-start').disabled = true;
+  $('#pr-live').disabled = true;
   try {
     if (!S.graph) {
       const [g, d, dest] = await Promise.all([
@@ -1180,6 +1277,7 @@ function buildPracticeRoute() {
   const info = $('#pr-info');
   const startBtn = $('#pr-start');
   startBtn.disabled = true;
+  $('#pr-live').disabled = true;
   if (!S.fix || Date.now() - S.fixReal > 60000) {
     dr.waiting = true;
     info.textContent = 'Waiting for your GPS position… (go outside, allow location)';
@@ -1199,6 +1297,7 @@ function buildPracticeRoute() {
   const climb = spec.profile.ele.reduce((acc, v, i, a) => acc + (i && v > a[i - 1] ? v - a[i - 1] : 0), 0);
   info.innerHTML = `<b>${km.toFixed(2)} km</b> ${S.settings.practiceReturn ? 'there and back' : 'one way'} · ghost ${fmtClock(km * pace)} at ${fmtPace(pace)} /km average · ${Math.round(climb)} m of climbing. The ghost uses even effort on the hills, like race day.`;
   startBtn.disabled = false;
+  $('#pr-live').disabled = false;
   const course = new Course(spec);
   useCourse(course, course.plan({ target: km * pace }));
   S.follow = true;
@@ -1224,19 +1323,23 @@ function onMapClick(lngLat) {
 // ---------------------------------------------------------------- simulation
 function startSim(speed, opts = {}) {
   closeSheets();
-  const spec = opts.practiceSpec || null;
+  let spec = opts.practiceSpec || null;
+  const live = !!(spec && opts.live); // LIVE rehearsal on a practice route
+  if (live) spec = withStartLine(spec, 30);
   const course = spec ? new Course(spec) : S.marathon;
   const pace = S.settings.practicePace;
   const target = spec ? (spec.distance / 1000) * pace : S.settings.target;
   const plan = spec ? course.plan({ target }) : planFor(course, null);
   const realStart = Date.now();
   const virtStart = spec ? realStart : gunMs() - 20000; // race: 20 s before the gun
-  const crossAt = virtStart + (spec ? 3000 : 26000);
+  const gunAt = live ? virtStart + 10000 : null;
+  const crossAt = live ? gunAt + 5000 : virtStart + (spec ? 3000 : 26000);
   S.sim = {
-    speed, realStart, virtStart,
+    speed, realStart, virtStart, crossAt,
+    // Demo race: 19 s down at km 36, then a strong finish, 11 s under the target.
     gen: simulate(course, plan, {
-      startMs: crossAt, preStartS: spec ? 3 : 45, seed: opts.seed ?? 1 + Math.floor(Math.random() * 1000),
-      bias: opts.bias ?? 0.002, wobble: 0.02, outlierRate: 0.01,
+      startMs: crossAt, preStartS: live ? 15 : spec ? 3 : 45, seed: opts.seed ?? 400,
+      bias: opts.bias ?? -0.003, wobble: 0.02, outlierRate: 0.01,
     }),
     next: null,
   };
@@ -1245,8 +1348,9 @@ function startSim(speed, opts = {}) {
   $('#sim-speed').textContent = `${speed}×`;
   S.practiceDraft = null;
   if (spec) {
-    beginRun(newRun('practice', 'manual', {
-      t0: crossAt, target, practice: { spec, pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0,
+    beginRun(newRun('practice', live ? 'live' : 'manual', {
+      t0: live ? gunAt : crossAt, target, practice: { spec, pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0,
+      ...(live ? { gunMs: gunAt, t0Source: 'gun', rehearsal: true } : {}),
     }));
   } else beginRun(newRun('race', 'live'));
 }

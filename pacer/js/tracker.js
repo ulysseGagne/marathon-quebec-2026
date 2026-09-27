@@ -229,22 +229,23 @@ export class Tracker {
   }
 
   // Times (ms) at which the estimate crossed official distance dLine going forward and
-  // kept going (+60 m within 90 s), oldest first. Searches the last 20 minutes.
+  // kept going, oldest first, from the last 20 minutes of estimates. For each pass it is
+  // the LAST forward crossing before reaching dLine + 60 m (within 90 s): standing a few
+  // metres behind the line, GPS noise can nudge the estimate across it and back, and only
+  // the crossing that led somewhere counts.
   crossingsOf(dLine, afterT = -Infinity) {
     const h = this.history;
     const out = [];
+    let up = null;
     for (let i = 1; i < h.length; i++) {
       const a = h[i - 1], b = h[i];
-      if (b.t < afterT) continue;
       if (a.d < dLine && b.d >= dLine) {
-        let ok = false;
-        for (let j = i; j < h.length && h[j].t - b.t <= 90000; j++) {
-          if (h[j].d >= dLine + 60) { ok = true; break; }
-        }
-        if (!ok) continue;
         const f = (dLine - a.d) / (b.d - a.d);
-        const tc = a.t + f * (b.t - a.t);
-        if (tc >= afterT) out.push(tc);
+        up = a.t + f * (b.t - a.t);
+      }
+      if (up !== null && b.d >= dLine + 60) {
+        if (up >= afterT && b.t - up <= 90000) out.push(up);
+        up = null;
       }
     }
     return out;

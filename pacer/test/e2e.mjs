@@ -34,7 +34,8 @@ await new Promise((r) => server.listen(8765, r));
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROME || '/opt/pw-browsers/chromium',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
+    '--autoplay-policy=no-user-gesture-required'],
 });
 const context = await browser.newContext({
   viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
@@ -55,9 +56,46 @@ await page.waitForSelector('#app.phase-ready', { timeout: 60000 });
 await sleep(4000);
 await shot('01-ready');
 
+// every recorded voice clip decodes
+const clipCheck = await page.evaluate(async () => {
+  const ids = Object.keys(await (await fetch('voice/index.json')).json());
+  const ctx = new OfflineAudioContext(1, 22050, 22050);
+  const bad = [];
+  let secs = 0;
+  for (const id of ids) {
+    try {
+      const b = await ctx.decodeAudioData(await (await fetch(`voice/${id}.mp3`)).arrayBuffer());
+      secs += b.duration;
+      if (!(b.duration > 0.2 && b.duration < 4)) bad.push(`${id}:${b.duration}`);
+    } catch (e) { bad.push(id); }
+  }
+  return { n: ids.length, bad, secs: Math.round(secs) };
+});
+console.log('voice clips:', JSON.stringify(clipCheck));
+if (clipCheck.bad.length || clipCheck.n < 200) errors.push(`voice clips failed: ${clipCheck.bad.join(' ')}`);
+
+// bars: the default plan shows on the map
+await page.evaluate(() => { window.__pacer.S.follow = false; window.__pacer.S.map.overview(); });
+await sleep(1500);
+const barsShown = await page.evaluate(() => window.__pacer.S.map.map.queryRenderedFeatures({ layers: ['bars'] }).length);
+console.log('bar markers on the overview:', barsShown);
+if (barsShown < 4) errors.push('bar markers missing');
+await page.evaluate(() => { window.__pacer.S.follow = true; window.__pacer.S.overviewShown = false; });
+
 await page.click('[data-open="settings"]');
 await sleep(500);
 await shot('02-settings');
+// bars typed in Settings, with a decimal comma
+await page.fill('#set-bars', '8,1 15 24.4, 33');
+await page.press('#set-bars', 'Enter');
+await page.evaluate(() => document.querySelector('#set-bars').blur());
+await sleep(300);
+const barsSet = await page.evaluate(() => window.__pacer.S.settings.bars);
+console.log('bars typed:', JSON.stringify(barsSet), '|', await page.textContent('#set-bars-note'));
+if (JSON.stringify(barsSet) !== '[8.1,15,24.4,33]') errors.push('bars input');
+await page.evaluate(() => document.querySelector('#set-mix').scrollIntoView({ block: 'start' }));
+await sleep(300);
+await shot('02b-settings-voice');
 await page.click('#sheet-settings [data-close]');
 await page.click('[data-open="plan"]');
 await sleep(500);
@@ -70,8 +108,8 @@ await shot('04-practice');
 await page.click('#sheet-practice [data-close]');
 await sleep(500);
 
-// Simulated race at 60x: gun 20 s after start of sim
-await page.evaluate(() => window.__pacer.startSim(60, { bias: 0.006, seed: 42 }));
+// Simulated race at 60x (the Settings demo race): gun 20 s after start of sim
+await page.evaluate(() => window.__pacer.startSim(60)); // the in-app demo race
 const waitVirtual = async (el) => {
   for (let i = 0; i < 600; i++) {
     const v = await page.evaluate(() => {
@@ -90,6 +128,8 @@ await page.evaluate(() => {
   const v = window.__pacer.S.voice;
   const say = v.say.bind(v);
   window.__spoken = [];
+  window.__how = [];
+  v.log = (t, how) => window.__how.push(how);
   v.say = (t, o) => { window.__spoken.push(t); say(t, o); };
 });
 const theme = (t) => page.evaluate((name) => {
@@ -156,8 +196,14 @@ const fin = await waitVirtual(10900);
 await sleep(1500);
 await shot('13-finish');
 spoken.push(...(await page.evaluate(() => window.__spoken)));
-console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)));
-if (!spoken.some((t) => / seconds? (behind|ahead)$|on pace$/.test(t))) errors.push('voice never said the gap');
+const how = await page.evaluate(() => window.__how);
+console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)), '| bars:', spoken.filter((t) => /bar/.test(t)).length,
+  '| recorded clips', how.filter((h) => h === 'clips').length, 'iPhone voice', how.filter((h) => h === 'speech').length);
+if (!spoken.some((t) => / seconds? (behind|ahead)\.?$|on pace\.?$/i.test(t))) errors.push('voice never said the gap');
+if (spoken.filter((t) => /Time for a bar/.test(t)).length !== 4) errors.push('bar cues');
+if (how.filter((h) => h === 'clips').length < 30) errors.push('recorded clips not used');
+const finRow = await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish));
+if (!(JSON.parse(finRow).elapsed < 10800)) errors.push('demo race did not finish under 3:00');
 console.log('finish at virtual', fin, await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));
 
 // ---- practice from a home in Sainte-Foy to DKN and back, simulated at 30x
@@ -198,6 +244,37 @@ for (let i = 0; i < 600; i++) {
 await sleep(800);
 await p2.screenshot({ path: join(out, '24-practice-finish.png') });
 console.log('practice finish', await p2.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));
+
+// ---- LIVE rehearsal on the same route: countdown, "Go!", then chip time at the start line
+await p2.evaluate(() => { window.__pacer.stopRun(); });
+await sleep(500);
+// a fresh fix, as a real phone gives every second (the emulator repeats the old one)
+await ctx2.setGeolocation({ latitude: 46.77711, longitude: -71.29901, accuracy: 6 });
+await sleep(500);
+await p2.click('[data-open="practice"]');
+for (let i = 0; i < 100; i++) {
+  if (await p2.evaluate(() => !!(window.__pacer.S.practiceDraft && window.__pacer.S.practiceDraft.spec))) break;
+  await sleep(200);
+}
+await p2.screenshot({ path: join(out, '24b-practice-sheet.png') });
+await p2.evaluate(() => {
+  const v = window.__pacer.S.voice; const say = v.say.bind(v);
+  window.__spoken = []; v.say = (t, o) => { window.__spoken.push(t); say(t, o); };
+  window.__pacer.startSim(10, { practiceSpec: window.__pacer.S.practiceDraft.spec, live: true, seed: 11 });
+});
+await sleep(400);
+await p2.screenshot({ path: join(out, '25-rehearsal-countdown.png') });
+let rehearsal = null;
+for (let i = 0; i < 150; i++) {
+  rehearsal = await p2.evaluate(() => { const { S } = window.__pacer; return { src: S.run.t0Source, t0: S.run.t0, cross: S.sim.crossAt, gun: S.run.gunMs, said: window.__spoken, badge: document.querySelector('#badges').textContent }; });
+  if (rehearsal.src === 'chip') break;
+  await sleep(200);
+}
+await sleep(300);
+await p2.screenshot({ path: join(out, '26-rehearsal-chip.png') });
+console.log('LIVE rehearsal:', rehearsal.src, 'chip vs true crossing', ((rehearsal.t0 - rehearsal.cross) / 1000).toFixed(2), 's, gun +', ((rehearsal.cross - rehearsal.gun) / 1000).toFixed(1), 's |', rehearsal.badge, '|', JSON.stringify(rehearsal.said));
+if (rehearsal.src !== 'chip' || Math.abs(rehearsal.t0 - rehearsal.cross) > 2000) errors.push('LIVE rehearsal chip time');
+if (!rehearsal.said.includes('Go!') || !rehearsal.said.includes('Chip time.')) errors.push('LIVE rehearsal voice');
 
 // ---- a real run survives a page reload
 const ctx3 = await browser.newContext({

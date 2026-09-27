@@ -216,6 +216,13 @@ button:disabled { opacity: 0.4; }
 .set-title { font: 700 14px/1.2 var(--ui); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
 .big-value { font: 800 40px/1.05 var(--cond); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
 .big-value.small-value { font-size: 26px; }
+.set-title.sub { margin-top: 14px; }
+.text-in {
+  width: 100%; min-height: 48px; padding: 0 12px; margin-bottom: 4px; border-radius: 12px;
+  background: #1c1c1c; border: 1px solid #3a3a3a; color: #fff; font: 700 20px/1 var(--ui);
+  -webkit-user-select: text; user-select: text;
+}
+.text-in:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .seg { display: flex; gap: 8px; }
 .seg.wrap { flex-wrap: wrap; margin-bottom: 8px; }
 .seg button {

@@ -19,12 +19,16 @@ Bright line starting ahead of you: you are behind. You are already on the bright
 <p>The course is built on real street centrelines, with the start and finish lines from the official start-area map, and distance measured along the shortest legal line through the corners, as the certified measurement is (42,195 m).</p>
 
 <h3>Starting</h3>
-<ul>
-<li><b>START</b>: the clock starts when you tap. Tap as you cross the start mat.</li>
-<li><b>LIVE</b>: the clock follows the 8:00:00 gun. When the app sees you cross the start line it switches to your chip time on its own (LIVE · CHIP).</li>
-<li>Forgot to tap? Press LIVE any time on race morning.</li>
-<li>Tapped START too early or too late? Hold <b>•••</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”.</li>
-</ul>
+<p><b>START</b>: the clock starts when you tap. Tap as you cross the start mat.</p>
+<p><b>LIVE</b> (recommended): nothing to time yourself.</p>
+<ol>
+<li>From 5:00 on race morning, press LIVE in the corral. The number counts down to 8:00:00 (phone time).</li>
+<li>At 8:00:00 the clock starts by itself (LIVE · GUN). The line under the number counts down the metres to the start line.</li>
+<li>As you run over the start line, the app switches to your chip time by itself (LIVE · CHIP) and the voice says “Chip time”. From then on the exact moment of the gun no longer matters: a gun a few seconds early or late is corrected at the line.</li>
+</ol>
+<p>Pressed LIVE only after starting to run? It still counts from 8:00:00 and finds your start-line crossing in the last 20 minutes if the app was open.</p>
+<p>Try it this week: <b>Practice → LIVE rehearsal</b> runs the same thing on your practice route, with the gun one minute after you press it (the voice says “Go!”) and a start line 30 m ahead of where you stand.</p>
+<p>Tapped START too early or too late? Hold <b>•••</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”.</p>
 
 <h3>Very hard to stop</h3>
 <p>Nothing on the running screen reacts to a tap. Hold the bottom row (<b>•••</b>) for <b>5 seconds</b> to open the run menu: a bar fills across the row and the line above counts down; let go early and nothing happens. Every change in the menu needs a 1-second hold, and stopping needs a 5-second hold. If the page reloads, crashes or gets swiped away, open it again: the run continues from the saved start time.</p>
@@ -33,11 +37,15 @@ Bright line starting ahead of you: you are behind. You are already on the bright
 <p>Km 10.7–11.3 and km 36.2–36.7: about 580 m each time without GPS. The number keeps going (with ~) and catches up after the exit.</p>
 
 <h3>Voice</h3>
-<p>Every 250 m, 500 m, 1 km (default) or 2 km of official distance, your choice in Settings or the run menu: “3 seconds behind”, “1 second ahead” or “on pace”; in the tunnel, “about 3 seconds behind”. Nothing else. iOS may mute it when the phone is on silent: check on a practice run.</p>
+<p>Every 250 m, 500 m, 1 km (default) or 2 km of official distance, your choice in Settings or the run menu: “3 seconds behind”, “1 second ahead” or “on pace”; in the tunnel, “about 3 seconds behind”; “time for a bar” at your bars; “chip time” at the start line in LIVE. Nothing else.</p>
+<p><b>With Apple Music</b>: by default a recorded voice talks over your music, which keeps playing. That needs the <b>side switch on ring</b> (no orange showing): on silent, iOS mutes this voice. Do Not Disturb keeps calls quiet. The other choice (Settings) is the iPhone's own voice, which works on silent but pauses Apple Music while it talks, and the music may not restart.</p>
 
 <h3>Screen off, pocket mode</h3>
 <p><b>Do not lock the phone</b> (side button) during the run: iOS freezes web apps while the phone is locked, so there is no GPS, no voice and no logic until you unlock it. Only a native app could keep running. When you unlock, the app catches up on its own and says the gap as soon as the GPS has you again (a few seconds). The app keeps the screen from locking by itself.</p>
 <p>For a phone in a pocket or an armband, use <b>Pocket mode</b> (Settings, or the run menu): the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 seconds. If the voice was off, pocket mode speaks every 1 km.</p>
+
+<h3>Bars</h3>
+<p>Settings → Bars: the official km where you want to eat a bar (for example 8.1, 14.8, 24.4, 32.6). Each shows on the map as a green BAR label; the line under the number counts down the last 300 m (“Bar in 240 m”), and the voice says “Time for a bar” as you pass it. They are also in the Splits. The race hands out Krono gels at km 15.1 and 27, oranges at 37.4 and water everywhere, so a bar just before an aid station can be washed down.</p>
 
 <h3>Colours</h3>
 <p>Settings → Colours. <b>B&amp;W</b> (default): white on black, your arrow in orange, the most contrast in sunlight. <b>Amber</b> and <b>Ice</b>: everything in one colour. <b>Signal</b>: the number panel turns red when behind and green when ahead. Map extras in every theme: blue (or orange/white) dots are aid stations, round badges are the kilometres.</p>
@@ -53,19 +61,20 @@ Bright line starting ahead of you: you are behind. You are already on the bright
 <p><b>Night before</b></p>
 <ol>
 <li>Charge to 100 %. Open the app once on Wi-Fi: the chip must say <b>Works offline</b>.</li>
+<li>Settings: check your target, your <b>bars</b>, and tap a Voice button to hear it with Apple Music playing.</li>
 <li>Safari → Share → <b>Add to Home Screen</b>, and start it from there (full screen).</li>
 <li>Settings → Privacy &amp; Security → Location Services: on; Safari Websites (and the Pacer icon if listed) → While Using, <b>Precise Location on</b>.</li>
 <li>Settings → Display &amp; Brightness → <b>Auto-Lock → Never</b> for the morning (the app also keeps the screen on). Do not press the side button during the run: locking pauses the app.</li>
 <li>Optional, strongest: Settings → Accessibility → <b>Guided Access</b> on with a passcode. Triple-click the side button in the app to lock the phone into it; in Options you can turn off the side button and touch.</li>
-<li>Check your target in Settings and look at the Splits.</li>
+<li>Look at the Splits: where the ghost slows, where your bars are.</li>
 </ol>
 <p><b>Race morning</b></p>
 <ol>
 <li>Keep the phone warm inside your clothes: cold drains old batteries fast.</li>
-<li><b>Do Not Disturb</b> (or Airplane mode — GPS keeps working) so no call or notification covers the screen.</li>
+<li><b>Do Not Disturb</b> (or Airplane mode — GPS keeps working) so no call or notification covers the screen. <b>Side switch on ring</b>, so the voice can talk over your music.</li>
 <li>Open the app in the corral 10 minutes early to get a GPS lock (chip ±5 m).</li>
 <li>Optional: wind forecast in Settings. Brightness up.</li>
-<li>START as you cross the mat (or LIVE before the gun). Guided Access if you use it.</li>
+<li>Press LIVE in the corral (or START as you cross the mat). Guided Access if you use it.</li>
 </ol>
 <p><b>After the finish</b>: the finish time pops up with Export GPX (Strava, etc.). Later: hold ••• 5 s → Export GPX.</p>
 

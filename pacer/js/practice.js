@@ -299,3 +299,17 @@ export function practiceSpec(latlon, dem, { name = 'Practice', outAndBack = fals
     turnD: outAndBack ? line[latlon.length - 1][2] : null,
   };
 }
+
+// LIVE rehearsal: the same route with its start line `lead` metres ahead of where you
+// stand, like the corral behind the real start line. Official distance starts there.
+export function withStartLine(spec, lead = 30) {
+  return {
+    ...spec,
+    name: `${spec.name} (LIVE rehearsal)`,
+    distance: +(spec.distance - lead).toFixed(1),
+    line: spec.line.map(([la, lo, d]) => [la, lo, +(d - lead).toFixed(1)]),
+    profile: { ...spec.profile, d0: spec.profile.d0 - lead },
+    turnD: spec.turnD == null ? null : spec.turnD - lead,
+    startLead: lead,
+  };
+}

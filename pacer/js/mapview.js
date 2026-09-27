@@ -50,6 +50,25 @@ export class Progress {
   }
 }
 
+// Where you planned to eat a bar: a small green bar-shaped label.
+function barPill() {
+  const pr = 2, w = 46, h = 24, r = 7;
+  const c = document.createElement('canvas');
+  c.width = w * pr; c.height = h * pr;
+  const g = c.getContext('2d');
+  g.scale(pr, pr);
+  g.beginPath();
+  g.moveTo(1.5 + r, 1.5); g.arcTo(w - 1.5, 1.5, w - 1.5, h - 1.5, r); g.arcTo(w - 1.5, h - 1.5, 1.5, h - 1.5, r);
+  g.arcTo(1.5, h - 1.5, 1.5, 1.5, r); g.arcTo(1.5, 1.5, w - 1.5, 1.5, r); g.closePath();
+  g.fillStyle = '#30D158'; g.fill();
+  g.lineWidth = 2.5; g.strokeStyle = '#000000'; g.stroke();
+  g.fillStyle = '#000000';
+  g.font = '800 13px -apple-system, system-ui, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('BAR', w / 2, h / 2 + 0.5);
+  return g.getImageData(0, 0, c.width, c.height);
+}
+
 // Clear before fraction f, bright from f on (256 texels per tile: soft, cheap edge).
 function frontGradient(f, eps, color) {
   return ['interpolate', ['linear'], ['line-progress'], f - eps, CLEAR, f, color];
@@ -168,7 +187,8 @@ export class MapView {
     const empty = fc([]);
     m.addSource('course', { type: 'geojson', data: empty, lineMetrics: true });
     m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
-    for (const id of ['course-tunnel', 'km', 'aid', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
+    for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
+    try { m.addImage('bar-pill', barPill(), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
     const round = { 'line-cap': 'round', 'line-join': 'round' };
     // free run: your own trail, bright from the ghost to you
     m.addLayer({ id: 'trail-route', type: 'line', source: 'trail', layout: round, paint: { 'line-color': T.route, 'line-width': THIN } });
@@ -209,6 +229,14 @@ export class MapView {
         'text-pitch-alignment': 'viewport', 'text-rotation-alignment': 'viewport',
       },
       paint: { 'text-color': T.kmText },
+    });
+    m.addLayer({
+      id: 'bars', type: 'symbol', source: 'bars', minzoom: 9,
+      layout: {
+        'icon-image': 'bar-pill', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 13, 0.8, 16, 1, 18, 1.2],
+        'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
+      },
     });
     m.addLayer({
       id: 'ends', type: 'symbol', source: 'ends',
@@ -288,7 +316,16 @@ export class MapView {
   clearCourse() {
     this.course = null;
     this.prog = null;
-    for (const id of ['course', 'course-tunnel', 'km', 'aid', 'ends']) this.map.getSource(id).setData(fc([]));
+    for (const id of ['course', 'course-tunnel', 'km', 'aid', 'bars', 'ends']) this.map.getSource(id).setData(fc([]));
+  }
+
+  // Bars you planned to eat, at official km on this course.
+  setBars(course, kms) {
+    const feats = (kms || []).filter((k) => k * 1000 < course.total).map((k) => {
+      const [la, lo] = course.line.latLonAt(k * 1000);
+      return pointFeature(lo, la, { km: k });
+    });
+    this.map.getSource('bars').setData(fc(feats));
   }
 
   // The ghost is at official distance d: the course is bright from there on.

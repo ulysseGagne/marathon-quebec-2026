@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS = {
   wind: { fromDeg: 45, kmh: 0 },
   aidSeconds: 0,
   voiceEvery: 1000,                // metres between spoken gaps (0 = off)
+  voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
+  bars: [8.1, 14.8, 24.4, 32.6],   // official km where you eat a bar (placeholder plan: edit in Settings)
   theme: 'mono',                   // colour theme (js/theme.js)
   pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun
@@ -32,6 +34,22 @@ export function loadSettings() {
 }
 
 export function saveSettings(s) { set(KEY_SETTINGS, JSON.stringify(s)); }
+
+// "8.1, 14.8 24,4" -> [8.1, 14.8, 24.4]: commas or spaces between numbers, and a decimal
+// comma is fine too ("24,4" alone).
+export function parseKms(text, maxKm) {
+  const out = [];
+  for (let tok of String(text).split(/[\s;]+/)) {
+    tok = tok.replace(/^,+|,+$/g, '');
+    if (!tok) continue;
+    const parts = /^\d+,\d+$/.test(tok) ? [tok.replace(',', '.')] : tok.split(',');
+    for (const p of parts) {
+      const v = Number(p);
+      if (Number.isFinite(v) && v > 0 && v < maxKm) out.push(Math.round(v * 10) / 10);
+    }
+  }
+  return [...new Set(out)].sort((a, b) => a - b);
+}
 
 export function loadRun() {
   try {
