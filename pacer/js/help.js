@@ -6,7 +6,7 @@ export function helpHtml(version) {
 From 100 s it switches to minutes: −1:40.</p>
 <p>It is measured where you are: your time on the clock minus the ghost's time at the same spot on the course.</p>
 <p>A <b>~</b> and diagonal stripes mean no GPS (tunnel): the app is estimating from your pace over the last minute and resyncs a few seconds after the GPS returns.</p>
-<p>Bottom row: time since the start, official km, and the <b>ghost's pace for the stretch you are on</b> (the pace to hold right now). Top right: projected finish = target + gap, in the accent colour once it is over 3:00:00.</p>
+<p>Bottom row: time since the start, official km, and the <b>ghost's pace for the stretch you are on</b> (the pace to hold right now). Top right: how and when the clock started, to the second (<b>LIVE · CHIP 8:00:05</b>: it counts from your start-line crossing at 8:00:05; <b>START 8:00:03</b>: from your tap), and the projected finish = target + gap, in the accent colour once it is over 3:00:00.</p>
 
 <h3>The ghost</h3>
 <p>The ghost is the <b>white arrow</b>; you are the <b>yellow arrow</b>. The course is bright from the ghost on and thin behind it, so the ghost eats the line as it runs.
@@ -31,10 +31,10 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 </ol>
 <p>Pressed LIVE only after starting to run? It still counts from 8:00:00 and finds your start-line crossing in the last 20 minutes if the app was open.</p>
 <p>Try it this week: <b>Practice → LIVE rehearsal</b> runs the same thing on your practice route, with the gun one minute after you press it (the voice says “Go!”) and a start line 30 m ahead of where you stand.</p>
-<p>Tapped START too early or too late? Hold <b>•••</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”.</p>
+<p>Tapped START too early or too late? Hold the <b>gear</b> (bottom right) for 5 seconds, then hold “start the clock at your start-line crossing”. The label at the top right then says CHIP and the time you crossed.</p>
 
 <h3>Very hard to stop</h3>
-<p>Nothing on the running screen reacts to a tap. Hold the bottom row (<b>•••</b>) for <b>5 seconds</b> to open the run menu: a bar fills across the row and the line above counts down; let go early and nothing happens. Every change in the menu needs a 1-second hold, and stopping needs a 5-second hold. If the page reloads, crashes or gets swiped away, open it again: the run continues from the saved start time.</p>
+<p>Nothing on the running screen reacts to a tap. Hold the bottom row (the <b>gear</b>) for <b>5 seconds</b> to open the run menu: a bar fills across the row and the line above counts down; let go early and nothing happens. Every change in the menu needs a 1-second hold, and stopping needs a 5-second hold. If the page reloads, crashes or gets swiped away, open it again: the run continues from the saved start time.</p>
 
 <h3>Tunnel Joseph-Samson</h3>
 <p>Km 10.7–11.3 and km 36.2–36.7: about 580 m each time without GPS. The number keeps going (with ~) and catches up after the exit.</p>
@@ -97,7 +97,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <li>Wind: tap the “Forecast wind” chip if it shows (or Settings → Use the forecast). Brightness up.</li>
 <li>Press LIVE in the corral (or START as you cross the mat). Guided Access if you use it.</li>
 </ol>
-<p><b>After the finish</b>: the finish time pops up with Export GPX (Strava, etc.). Later: hold ••• 5 s → Export GPX.</p>
+<p><b>After the finish</b>: the finish time pops up with Export GPX (Strava, etc.). Later: hold the gear 5 s → Export GPX.</p>
 
 <h3>Limits</h3>
 <p>The official course PDF could not be downloaded while this was built. The course was rebuilt from the earlier trace (checked against the official 2026 map) snapped onto real streets; its shortest-route length came out within 0.2 % of the certified 42,195 m, and the start and finish lines come from the official start-area map. The physical km signs may be a few tens of metres off from the app: trust the app. Elevation comes from ~20 m terrain models, so small bumps are approximate.</p>

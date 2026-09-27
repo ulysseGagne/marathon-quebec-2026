@@ -672,7 +672,7 @@ function renderRunPanel(now, el, d, est, estimating) {
   else if (fixAge > 8 && !S.sim) status = `No GPS for ${Math.round(fixAge)} s`;
   else if (S.crossHintUntil > now && r.crossing) {
     const diff = (r.crossing - r.t0) / 1000;
-    status = `Start line crossed ${Math.abs(diff).toFixed(0)} s ${diff > 0 ? 'after' : 'before'} START · hold ••• to fix`;
+    status = `Start line crossed ${Math.abs(diff).toFixed(0)} s ${diff > 0 ? 'after' : 'before'} START · hold the gear to fix`;
   } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · ${r.rehearsal ? 'wait for “Go!”' : 'stay in the corral'}`;
   else if (r.mode === 'live' && r.t0Source === 'gun' && el >= 0 && el < 600 && d !== null && d < 0) status = `Start line in ${Math.round(-d)} m · then chip time`;
   else if (fuelStatus(d)) status = fuelStatus(d);
@@ -721,20 +721,25 @@ function renderBadges(el, g) {
   const r = S.run;
   const parts = [];
   if (r.sim) parts.push('<div class="badge">SIM</div>');
+  parts.push(clockBadge(r));
   if (r.kind === 'race') {
-    const mode = r.mode === 'live' ? (r.t0Source === 'chip' ? 'LIVE · CHIP' : 'LIVE · GUN') : r.t0Source === 'adjusted' ? 'START · ADJUSTED' : 'START';
-    parts.push(`<div class="badge">${mode}</div>`);
     if (el > 0 && g.value !== null && S.plan) {
       const proj = S.plan.target + g.value;
       parts.push(`<div class="badge big${proj >= 3 * 3600 ? ' over' : ''}">→ ${fmtClock(proj)}</div>`);
     }
-  } else if (r.kind === 'practice') {
-    if (r.mode === 'live') parts.push(`<div class="badge">LIVE TEST · ${r.t0Source === 'chip' ? 'CHIP' : r.t0Source === 'gun' ? 'GUN' : 'ADJUSTED'}</div>`);
-    parts.push(`<div class="badge">PRACTICE · ${fmtPace(r.practice.pace)}</div>`);
-  }
+  } else if (r.kind === 'practice') parts.push(`<div class="badge">PRACTICE · ${fmtPace(r.practice.pace)}</div>`);
   else if (r.kind === 'free') parts.push(`<div class="badge">FREE RUN · ${fmtPace(r.free.pace)}</div>`);
   const html = parts.join('');
   if (S.lastPanel.badges !== html) { $('#badges').innerHTML = html; S.lastPanel.badges = html; }
+}
+
+// How the run's clock started and at what time of day, to the second, so a glance tells
+// it started right: "LIVE · CHIP 8:00:05" (you crossed the start line at 8:00:05),
+// "LIVE · GUN 8:00:00", "START 8:00:03" (you tapped START), "ADJUSTED 8:00:06".
+function clockBadge(r) {
+  const how = { chip: 'CHIP', gun: 'GUN', adjusted: 'ADJUSTED' }[r.t0Source] || 'START';
+  const live = r.mode === 'live' ? (r.kind === 'race' ? 'LIVE · ' : 'LIVE TEST · ') : '';
+  return `<div class="badge">${live}${how} ${fmtTimeOfDay(r.t0, true)}</div>`;
 }
 
 function renderRunMap(now, el, d, est, dt) {
@@ -935,7 +940,7 @@ function bindLongPress(el, ms, fn) {
     cancelAnimationFrame(raf);
     run.classList.remove('holding');
     run.style.setProperty('--hold', 0);
-    if (early) say('Hold ••• for 5 seconds to open the menu', Date.now() + 2500);
+    if (early) say('Hold for 5 seconds to open the menu', Date.now() + 2500);
     else say(null);
   };
   el.addEventListener('pointerdown', (e) => {

@@ -221,7 +221,19 @@ for (const [el, name, th] of [[240, '06-km1'], [1500, '07-km6'], [2745, '08-tunn
   console.log(name, Math.round(v), JSON.stringify(info));
   await shot(name);
 }
-// a short press on ••• does nothing; a 5 s hold opens the run menu
+// the top-right label says how and when the clock started, to the second
+const clockLbl = await page.evaluate(() => {
+  const { S } = window.__pacer;
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Toronto', hour: 'numeric', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(S.run.t0));
+  const g = (t) => p.find((x) => x.type === t).value;
+  return { badge: document.querySelector('#badges').textContent, want: `${Number(g('hour'))}:${g('minute')}:${g('second')}`, src: S.run.t0Source };
+});
+console.log('clock label:', JSON.stringify(clockLbl));
+if (!clockLbl.badge.includes(`LIVE · CHIP ${clockLbl.want}`)) errors.push('start time label');
+// the menu handle is a gear, no text
+const handle = await page.evaluate(() => { const h = document.querySelector('#menu-handle'); return { svg: !!h.querySelector('svg path'), text: h.textContent.trim() }; });
+if (!handle.svg || handle.text) errors.push('menu handle is not a gear');
+// a short press on the gear does nothing; a 5 s hold opens the run menu
 const box = await page.locator('#info').boundingBox();
 await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);
 await page.mouse.down();
