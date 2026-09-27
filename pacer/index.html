@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="format-detection" content="telephone=no">
 <title>Virtual Pacer</title>
-<meta name="description" content="Virtual pacer for the 2026 Marathon Beneva de Québec: one big number, seconds ahead or behind a perfect even-effort run.">
+<meta name="description" content="Virtual pacer for the 2026 Marathon Beneva de Québec: one big number, seconds behind (+) or ahead (−) of a perfect even-effort run.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -54,15 +54,14 @@
     <!-- Running: the one number -->
     <div id="run" class="pane" aria-live="off">
       <div id="gap-wrap"><div id="gap-num">0</div></div>
-      <div id="gap-word">ON PACE</div>
+      <div id="gap-word"></div>
       <div id="status-line"></div>
       <div id="info">
         <div class="cell"><span class="lbl">time</span><span id="v-elapsed" class="val">0:00:00</span></div>
         <div class="cell"><span class="lbl">km</span><span id="v-km" class="val">0.00</span></div>
         <div class="cell"><span class="lbl">ghost</span><span id="v-pace" class="val">4:15</span></div>
-        <div id="menu-handle" class="cell handle" aria-label="Hold for run menu"><span class="dots">•••</span><span class="lbl">hold</span></div>
+        <div id="menu-handle" class="cell handle" aria-label="Hold 5 seconds for the run menu"><span class="dots">•••</span><span class="lbl">hold 5 s</span></div>
       </div>
-      <div id="hold-hint"></div>
     </div>
   </section>
 
@@ -92,8 +91,9 @@
         </div>
       </div>
       <button id="btn-retarget" type="button" class="wide hold" hidden></button>
-      <div class="menu-row"><span class="menu-label">Voice</span><div class="seg" id="menu-voice"></div></div>
-      <div class="menu-row"><span class="menu-label">Number</span><div class="seg" id="menu-panel"></div></div>
+      <div class="menu-row"><span class="menu-label">Voice every</span><div class="seg compact" id="menu-voice"></div></div>
+      <div class="menu-row"><span class="menu-label">Colours</span><div class="seg compact" id="menu-theme"></div></div>
+      <div class="menu-row"><span class="menu-label">Pocket mode · black screen, voice only</span><div class="seg" id="menu-pocket"></div></div>
       <button id="btn-export" type="button" class="wide">Export GPX of this run</button>
       <button id="btn-stop" type="button" class="wide danger hold5"><span class="fill"></span><span class="t">Hold 5 s to stop the run</span></button>
     </div>
@@ -134,12 +134,20 @@
         <p class="muted small">Seconds the ghost loses at each of the 15 aid stations (drinking). 0 = the ghost runs through.</p>
       </div>
       <div class="set-block">
-        <div class="set-title">Voice at each km</div>
-        <div class="seg" id="set-voice"></div>
+        <div class="set-title">Voice every</div>
+        <div class="seg compact" id="set-voice"></div>
+        <p class="muted small" id="set-voice-note"></p>
       </div>
       <div class="set-block">
-        <div class="set-title">Big number style</div>
-        <div class="seg" id="set-panel"></div>
+        <div class="set-title">Colours</div>
+        <div class="seg compact" id="set-theme"></div>
+        <p class="muted small" id="set-theme-note"></p>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Pocket mode</div>
+        <div class="seg" id="set-pocket"></div>
+        <p class="muted small">For a phone in a pocket or an armband. During the run the screen goes black (black pixels on the iPhone screen use almost no power) and the map stops drawing, but GPS and the voice keep going. Tap the screen to look for 12 s. Also in the run menu.</p>
+        <p class="muted small">Do not lock the phone with the side button: iOS freezes web apps while the phone is locked, so there is no GPS and no voice until you unlock it. The app then catches up and says the gap.</p>
       </div>
       <div class="set-block">
         <div class="set-title">Live mode gun time</div>
@@ -207,6 +215,11 @@
     <div class="fin-gap" id="fin-gap"></div>
     <button type="button" class="wide" id="fin-export">Export GPX</button>
     <button type="button" class="wide" id="fin-close">Back to the map</button>
+  </div>
+
+  <div id="pocket" hidden>
+    <div class="pk-title">POCKET MODE</div>
+    <div class="pk-sub" id="pk-sub">Voice every 1 km · tap to look</div>
   </div>
 
   <div id="toast" hidden></div>

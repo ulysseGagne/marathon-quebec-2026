@@ -33,22 +33,28 @@ export class GapDisplay {
   }
 }
 
-// "7", "42", "1:15"
+const MINUS = '\u2212'; // a real minus sign, as wide as the plus in the number font
+
+// The number on screen: "+7" = 7 s behind the ghost, "−7" = 7 s ahead, "0" = on it.
+// From 100 s on, minutes: "+1:15". (Race-timing convention: + is time you owe.)
 export function fmtGap(sec) {
-  const a = Math.abs(Math.round(sec));
-  if (a < 100) return String(a);
-  return `${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
+  const r = Math.round(sec);
+  const a = Math.abs(r);
+  const body = a < 100 ? String(a) : `${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
+  return r > 0 ? `+${body}` : r < 0 ? `${MINUS}${body}` : body;
 }
 
-// Words used by the voice: "3 behind", "10 ahead", "on pace"
+// Words used by the voice: "3 seconds behind", "1 second ahead", "on pace",
+// "1 minute 40 seconds behind".
 export function spokenGap(sec) {
   const a = Math.abs(Math.round(sec));
   if (a === 0) return 'on pace';
+  const secs = (n) => `${n} second${n === 1 ? '' : 's'}`;
   let amount;
-  if (a < 100) amount = String(a);
+  if (a < 100) amount = secs(a);
   else {
     const m = Math.floor(a / 60), s = a % 60;
-    amount = s ? `${m} minute${m > 1 ? 's' : ''} ${s}` : `${m} minute${m > 1 ? 's' : ''}`;
+    amount = `${m} minute${m > 1 ? 's' : ''}${s ? ` ${secs(s)}` : ''}`;
   }
   return `${amount} ${sec > 0 ? 'behind' : 'ahead'}`;
 }

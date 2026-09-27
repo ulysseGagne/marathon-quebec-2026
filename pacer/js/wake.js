@@ -1,7 +1,17 @@
 // Keep the screen on. A web page gets no GPS while the iPhone is locked, so this matters.
 // Uses the Screen Wake Lock API (Safari 16.4+) and falls back to NoSleep's silent video.
 // Home Screen web apps before iOS 18.4 accepted a wake lock without honouring it, so in
-// that mode the silent looping video also runs, belt and braces.
+// that mode (only) the silent looping video also runs, belt and braces. On iOS 18.4+ the
+// video is not played: decoding it all race long would cost battery for nothing.
+
+// Home Screen app on an iOS older than 18.4?
+function oldStandaloneIos() {
+  if (typeof navigator === 'undefined' || navigator.standalone !== true) return false;
+  const m = /OS (\d+)_(\d+)/.exec(navigator.userAgent || '');
+  if (!m) return true;
+  const major = Number(m[1]), minor = Number(m[2]);
+  return major < 18 || (major === 18 && minor < 4);
+}
 
 export class Wake {
   constructor() {
@@ -19,7 +29,7 @@ export class Wake {
   // Call from a user gesture the first time.
   async enable() {
     this.wanted = true;
-    if (navigator.standalone === true) this._video();
+    if (oldStandaloneIos()) this._video();
     if ('wakeLock' in navigator) {
       try {
         if (!this.lock || this.lock.released) {

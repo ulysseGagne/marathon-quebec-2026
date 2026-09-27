@@ -9,8 +9,9 @@ export const DEFAULT_SETTINGS = {
   target: 2 * 3600 + 59 * 60 + 30, // race finish target (s)
   wind: { fromDeg: 45, kmh: 0 },
   aidSeconds: 0,
-  voice: true,
-  panel: 'color',                  // 'color' (whole panel red/green) or 'black'
+  voiceEvery: 1000,                // metres between spoken gaps (0 = off)
+  theme: 'mono',                   // colour theme (js/theme.js)
+  pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun
   practicePace: 255,               // s/km for practice runs
   practiceReturn: true,            // out and back
@@ -23,6 +24,10 @@ function del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
 export function loadSettings() {
   let s = {};
   try { s = JSON.parse(get(KEY_SETTINGS) || '{}') || {}; } catch { s = {}; }
+  // earlier versions: voice on/off at each km, and a red/green or black number panel
+  if (typeof s.voice === 'boolean' && s.voiceEvery === undefined) s.voiceEvery = s.voice ? 1000 : 0;
+  delete s.voice;
+  delete s.panel;
   return { ...DEFAULT_SETTINGS, ...s, wind: { ...DEFAULT_SETTINGS.wind, ...(s.wind || {}) } };
 }
 

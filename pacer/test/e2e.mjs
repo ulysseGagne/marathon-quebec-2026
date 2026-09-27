@@ -85,9 +85,24 @@ const waitVirtual = async (el) => {
 };
 await sleep(150);
 await shot('05-countdown');
-for (const [el, name] of [[240, '06-km1'], [1500, '07-km6'], [2745, '08-tunnel'], [3130, '09-climb'], [6400, '10-champlain'], [9000, '11-km36']]) {
-  if (name === '10-champlain') await page.evaluate(() => { window.__pacer.S.settings.panel = 'black'; window.__pacer.S.lastPanel = {}; });
-  if (name === '11-km36') await page.evaluate(() => { window.__pacer.S.settings.panel = 'color'; window.__pacer.S.lastPanel = {}; });
+const spoken = [];
+await page.evaluate(() => {
+  const v = window.__pacer.S.voice;
+  const say = v.say.bind(v);
+  window.__spoken = [];
+  v.say = (t, o) => { window.__spoken.push(t); say(t, o); };
+});
+const theme = (t) => page.evaluate((name) => {
+  const b = document.querySelector(`#set-theme [data-theme="${name}"]`) || null;
+  if (b) b.click();
+}, t);
+for (const [el, name, th] of [[240, '06-km1'], [1500, '07-km6'], [2745, '08-tunnel'], [3130, '09-climb', 'amber'], [6400, '10-champlain', 'ice'], [9000, '11-km36', 'signal']]) {
+  if (th) {
+    // switch colours the way the Settings sheet does
+    await page.evaluate(() => window.__pacer.openSheet('settings'));
+    await theme(th);
+    await page.evaluate(() => document.querySelector('#sheet-settings [data-close]').click());
+  }
   const v = await waitVirtual(el);
   const info = await page.evaluate(() => {
     const { S, clock } = window.__pacer;
@@ -98,18 +113,51 @@ for (const [el, name] of [[240, '06-km1'], [1500, '07-km6'], [2745, '08-tunnel']
   console.log(name, Math.round(v), JSON.stringify(info));
   await shot(name);
 }
-// long-press the handle to open the run menu
+// a short press on ••• does nothing; a 5 s hold opens the run menu
 const box = await page.locator('#info').boundingBox();
 await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);
 await page.mouse.down();
-await sleep(1300);
+await sleep(1500);
+await shot('12a-holding');
+await page.mouse.up();
+await sleep(200);
+if (!(await page.locator('#sheet-menu').isHidden())) errors.push('menu opened after 1.5 s');
+await page.mouse.down();
+await sleep(5400);
 await page.mouse.up();
 await sleep(400);
+if (await page.locator('#sheet-menu').isHidden()) errors.push('menu did not open after a 5 s hold');
 await shot('12-run-menu');
-await page.click('#sheet-menu [data-close]');
+// pocket mode from the menu: black screen, the loop keeps running
+await page.click('#menu-pocket [data-pocket="1"]');
+await sleep(800);
+await shot('12b-pocket');
+if (await page.locator('#pocket').isHidden()) errors.push('pocket mode did not show');
+await page.click('#pocket');
+await sleep(600);
+if (!(await page.locator('#pocket').isHidden())) errors.push('pocket peek did not show the screen');
+await page.evaluate(() => { const { S } = window.__pacer; S.settings.pocket = false; S.lastPanel = {}; });
+// the phone was locked for 30 s (iOS froze the page): on unlock the app catches up and
+// says the gap as soon as GPS has placed the runner again
+const saidBefore = await page.evaluate(() => window.__spoken.length);
+await page.evaluate(() => {
+  const setVis = (v) => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => v === 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); };
+  setVis('hidden');
+  window.__pacer.S.hiddenAt = Date.now() - 30000;
+  setVis('visible');
+});
+await sleep(300);
+const toastTxt = await page.textContent('#toast');
+await sleep(1500);
+const caught = await page.evaluate((n) => ({ said: window.__spoken.slice(n), resume: window.__pacer.S.resume }), saidBefore);
+console.log('after unlock:', toastTxt, JSON.stringify(caught));
+if (!/paused/.test(toastTxt) || !caught.said.some((t) => /seconds? (behind|ahead)$|on pace$/.test(t)) || caught.resume) errors.push('no catch-up after unlock');
 const fin = await waitVirtual(10900);
 await sleep(1500);
 await shot('13-finish');
+spoken.push(...(await page.evaluate(() => window.__spoken)));
+console.log('voice said', spoken.length, 'times, e.g.', JSON.stringify(spoken.slice(0, 6)));
+if (!spoken.some((t) => / seconds? (behind|ahead)$|on pace$/.test(t))) errors.push('voice never said the gap');
 console.log('finish at virtual', fin, await page.evaluate(() => JSON.stringify(window.__pacer.S.run && window.__pacer.S.run.finish)));
 
 // ---- practice from a home in Sainte-Foy to DKN and back, simulated at 30x

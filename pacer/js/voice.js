@@ -1,5 +1,6 @@
-// Spoken gap at every kilometre ("3 behind"). Works offline with iOS's built-in voices,
-// through earbuds or the phone speaker.
+// Spoken gap every 250 m to 2 km ("3 seconds behind"). Works offline with iOS's built-in
+// voices, through earbuds or the phone speaker. Like everything in a web app, it only
+// speaks while the app is on screen: iOS freezes web pages when the phone is locked.
 
 export class Voice {
   constructor() {

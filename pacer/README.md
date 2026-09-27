@@ -1,8 +1,8 @@
 # Virtual Pacer — Marathon Beneva de Québec 2026
 
-A phone app that shows one number while you run: how many seconds you are **behind (red)** or
-**ahead (green)** of a perfect even-effort run to your target (2:59:30 by default), measured
-at the exact spot where you are on the course.
+A phone app that shows one number while you run: how many seconds you are **behind (`+3`)** or
+**ahead (`−3`)** of a perfect even-effort run to your target (2:59:30 by default), measured
+at the exact spot where you are on the course. The voice says it too: “3 seconds behind”.
 
 **Open it on the iPhone:** <https://ulyssegagne.github.io/marathon-quebec-2026/pacer/>
 then Safari → Share → **Add to Home Screen**. After the first visit it works with no
@@ -15,12 +15,14 @@ connection at all.
 | **Start screen** | Map with your position (and the direction the phone points, after “turn on compass”), the course, GPS accuracy, “Works offline”. |
 | **START** | The clock starts when you tap. Tap as you cross the start mat. |
 | **LIVE** | The clock follows the 8:00:00 gun; when the app sees you cross the start line it switches to your chip time (`LIVE · CHIP`). Use it if you forgot to tap START. Available from 5:00 on race morning. |
-| **Running screen** | Top half: tilted map that turns with the course, more road ahead than behind, zooming out on straights and in before turns. Magenta dot = the ghost. Bottom half: the number, `BEHIND`/`AHEAD`, then time, official km, and the ghost's pace for the stretch you are on. Top right: projected finish (target + gap). |
+| **Running screen** | Top half: tilted map that turns with the course, more road ahead than behind, zooming out on straights and in before turns. The ghost is the front of the bright line: the course is thin behind the ghost and bright from it on, and the front glides forward at the ghost's pace. Bottom half: the number (`+3` = 3 s behind, `−3` = 3 s ahead, like race-timing gaps), then time, official km, and the ghost's pace for the stretch you are on. Top right: projected finish (target + gap). |
 | **Tunnel** | Tunnel Joseph-Samson (km 10.7–11.3 and 36.2–36.7, ~580 m each) has no GPS: the number shows `~` with stripes and is estimated from your pace relative to the ghost; it resyncs after the exit. |
-| **Voice** | At each official km: “3 behind”, “10 ahead”, “on pace”. Nothing else. |
-| **Stopping** | Nothing reacts to a tap. Hold **•••** (bottom right) 1 s for the run menu; changes there need a 1 s hold; stopping needs a 5 s hold. A reload, crash or swipe-away resumes the run from the saved start time. |
-| **Run menu** | Start the clock at your detected start-line crossing, use gun time, nudge the start ±1/±5 s, set a new finish target from here, voice on/off, colour/black number, export GPX. |
-| **Settings** | Target time, race-morning wind (direction + speed), seconds lost per aid station, voice, number style, gun time (if the start is delayed), a 20× simulated race. |
+| **Voice** | Every 250 m, 500 m, 1 km (default) or 2 km of official distance: “3 seconds behind”, “1 second ahead”, “on pace” (“about …” in the tunnel). Nothing else. |
+| **Stopping** | Nothing reacts to a tap. Hold the bottom row (**•••**) for **5 s** to open the run menu: a bar fills across the row and the line above counts down; letting go early does nothing. Changes in the menu need a 1 s hold; stopping needs a 5 s hold. A reload, crash or swipe-away resumes the run from the saved start time. |
+| **Screen off** | iOS freezes web apps while the phone is locked: no GPS, no voice, no logic until it is unlocked (only a native app could keep running). The app keeps the screen awake itself; when it is unlocked after a pause it catches up and says the gap within a few seconds. **Pocket mode** (Settings or run menu) is the battery-friendly alternative: black screen (black OLED pixels draw almost nothing), map paused, GPS and voice running; tap to look for 12 s. |
+| **Colours** | B&W (default: white on black, orange arrow), Amber and Ice (one colour each), Signal (panel turns red/green). |
+| **Run menu** | Start the clock at your detected start-line crossing, use gun time, nudge the start ±1/±5 s, set a new finish target from here, voice interval, colours, pocket mode, export GPX. |
+| **Settings** | Target time, race-morning wind (direction + speed), seconds lost per aid station, voice interval, colours, pocket mode, gun time (if the start is delayed), a 20× simulated race. |
 | **Splits** | Every kilometre of the even-effort plan with clock and time of day. |
 | **Practice** | Builds a route on real streets from where you stand to Pavillon Charles-De Koninck (DKN, Université Laval) — or any point you tap — there and back or one way, at the ghost pace you choose, with even effort on the hills. **Free run** works anywhere without a route. |
 
@@ -54,7 +56,14 @@ Never, Guided Access, Do Not Disturb, keeping the old battery warm).
   certified 42,195 m, and the residual is spread evenly. Elevation: mean of AWS Terrain Tiles
   (CDEM) and the earlier trace's elevations, bridges and tunnels interpolated.
 - **Map**: MapLibre GL 5.24 with an offline dark basemap (`data/basemap.pmtiles`, 3.7 MB, all of
-  Québec City) built from Overture Maps; course in sunlight-readable yellow.
+  Québec City) built from Overture Maps. The course is uploaded once; the ghost's front is a
+  `line-gradient` on that line, changed in place each frame (no re-tiling, so it glides).
+- **Battery**: the running screen redraws 5 times a second and only when something moved;
+  nothing redraws in pocket mode; the compass is off during the run; the keep-awake video only
+  plays on iOS before 18.4 (where the wake lock does not work in Home Screen apps); map
+  transitions are off. Measured in desktop Chromium against the previous version: 5.5 map
+  redraws/s instead of 9.4 while running, main-thread work down a third, 0.1 redraws/s instead
+  of 3.7 on the start screen while standing still.
 - **Offline**: a service worker precaches all 8.6 MB on the first visit. Updates wait until you
   tap “Update ready” on the start screen, so nothing reloads during a run.
 
@@ -74,7 +83,7 @@ Never, Guided Access, Do Not Disturb, keeping the old battery warm).
 pacer/
   index.html, app.css, sw.js, manifest.webmanifest
   js/        app.js (UI), course.js, geo.js, model.js, tracker.js, gap.js, practice.js,
-             freerun.js, mapview.js, store.js, voice.js, wake.js, sim.js, help.js
+             freerun.js, mapview.js, theme.js, store.js, voice.js, wake.js, sim.js, help.js
   data/      course.json, marathon-2026.gpx, basemap.pmtiles, practice-graph.bin,
              practice-dem.bin, practice-dest.json
   vendor/    maplibre-gl 5.24.0, pmtiles 4.5.0, NoSleep.js 0.12.0

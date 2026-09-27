@@ -1,14 +1,59 @@
-// MapLibre map: black basemap from the bundled PMTiles, the course in sunlight-readable
-// yellow, the ghost in magenta, you in white. Works fully offline.
+// MapLibre map: black basemap from the bundled PMTiles, the course and you. Works fully
+// offline.
+//
+// The ghost is not a marker: it is the front of the bright course line. Behind the ghost
+// the course is a thin line, from the ghost on it is bright. The front is drawn with a
+// line-gradient on one static source, changed in place every frame: no re-tiling, so
+// it glides instead of jumping in chunks, and it costs next to nothing.
 /* global maplibregl, pmtiles */
+import { themeOf } from './theme.js';
 
-export const COLORS = {
-  course: '#FFD60A',
-  courseDone: '#4d4a3a',
-  ghost: '#FF2BD6',
-  me: '#FFFFFF',
-  aid: '#2EA8FF',
-};
+const CLEAR = 'rgba(0,0,0,0)';
+const THIN = ['interpolate', ['exponential', 1.5], ['zoom'], 11, 1.3, 15, 3, 18, 6];
+const THICK = ['interpolate', ['exponential', 1.5], ['zoom'], 11, 2.5, 15, 7, 18, 16];
+
+// Web Mercator, exactly as the map's tiler measures line length (line-progress).
+function mercX(lon) { return lon / 360 + 0.5; }
+function mercY(lat) {
+  const s = Math.sin((lat * Math.PI) / 180);
+  const y = 0.5 - (0.25 * Math.log((1 + s) / (1 - s))) / Math.PI;
+  return y < 0 ? 0 : y > 1 ? 1 : y;
+}
+
+// Line-progress lookup for a polyline: official (or trail) distance -> fraction of the
+// line's Mercator length, which is what the map's line-progress measures.
+export class Progress {
+  constructor(lats, lons, dists) {
+    const n = lats.length;
+    this.d = dists;
+    this.m = new Float64Array(n);
+    let x0 = mercX(lons[0]), y0 = mercY(lats[0]);
+    for (let i = 1; i < n; i++) {
+      const x = mercX(lons[i]), y = mercY(lats[i]);
+      this.m[i] = this.m[i - 1] + Math.sqrt((x - x0) ** 2 + (y - y0) ** 2);
+      x0 = x; y0 = y;
+    }
+    this.total = this.m[n - 1] || 1;
+    // half a metre, as a fraction: the width of the soft edge at the front
+    const len = dists[n - 1] - dists[0];
+    this.eps = len > 0 ? 0.5 / len : 1e-6;
+  }
+
+  at(dist) {
+    const a = this.d, n = a.length;
+    if (dist <= a[0]) return 0;
+    if (dist >= a[n - 1]) return 1;
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (a[mid] <= dist) lo = mid; else hi = mid; }
+    const f = a[hi] > a[lo] ? (dist - a[lo]) / (a[hi] - a[lo]) : 0;
+    return (this.m[lo] + (this.m[hi] - this.m[lo]) * f) / this.total;
+  }
+}
+
+// Clear before fraction f, bright from f on (256 texels per tile: soft, cheap edge).
+function frontGradient(f, eps, color) {
+  return ['interpolate', ['linear'], ['line-progress'], f - eps, CLEAR, f, color];
+}
 
 class BufferSource {
   constructor(key, buf) { this.key = key; this.buf = buf; }
@@ -29,6 +74,9 @@ function darkStyle() {
   const cls = (c) => ['==', ['get', 'c'], c];
   return {
     version: 8,
+    // No animated paint transitions: the ghost front changes a paint property 5 times a
+    // second, and each change would otherwise keep the map redrawing for 300 ms.
+    transition: { duration: 0, delay: 0 },
     glyphs: 'glyphs/{fontstack}/{range}.pbf',
     sources: {
       base: { type: 'vector', url: 'pmtiles://basemap', attribution: '© OpenStreetMap contributors · Overture Maps' },
@@ -74,8 +122,14 @@ export class MapView {
     this.container = container;
     this.map = null;
     this.course = null;
-    this.splitD = null;
     this.ready = false;
+    this.theme = themeOf('mono');
+    this.prog = null;       // Progress of the course line
+    this.front = null;      // fraction currently drawn as the ghost front
+    this.trailProg = null;
+    this.trailFront = null;
+    this.trailGhost = null;
+    this.cam = null;        // last camera sent to the map
     this.calib = null;
     this.pitch = 55;
     this.padTopFrac = 0.46;
@@ -92,6 +146,7 @@ export class MapView {
       zoom: 12,
       attributionControl: false,
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      maxZoom: 19,
       maxPitch: 70,
       fadeDuration: 0,
       renderWorldCopies: false,
@@ -103,32 +158,24 @@ export class MapView {
     await new Promise((resolve) => this.map.once('load', resolve));
     this._addCourseLayers();
     this.me = this._makeMe();
-    this.ghost = this._makeGhost();
     this.ready = true;
     new ResizeObserver(() => { this.map.resize(); this.calib = null; }).observe(this.container);
   }
 
   _addCourseLayers() {
     const m = this.map;
+    const T = this.theme;
     const empty = fc([]);
-    for (const id of ['course-done', 'course-ahead', 'course-tunnel', 'km', 'aid', 'ends', 'trail']) {
-      m.addSource(id, { type: 'geojson', data: empty });
-    }
-    m.addLayer({
-      id: 'trail', type: 'line', source: 'trail',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#8a8a8a', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 18, 5], 'line-opacity': 0.8 },
-    });
-    m.addLayer({
-      id: 'course-done', type: 'line', source: 'course-done',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': COLORS.courseDone, 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 11, 2, 15, 6, 18, 14] },
-    });
-    m.addLayer({
-      id: 'course-ahead', type: 'line', source: 'course-ahead',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': COLORS.course, 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 11, 2.5, 15, 7, 18, 16] },
-    });
+    m.addSource('course', { type: 'geojson', data: empty, lineMetrics: true });
+    m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
+    for (const id of ['course-tunnel', 'km', 'aid', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
+    const round = { 'line-cap': 'round', 'line-join': 'round' };
+    // free run: your own trail, bright from the ghost to you
+    m.addLayer({ id: 'trail-route', type: 'line', source: 'trail', layout: round, paint: { 'line-color': T.route, 'line-width': THIN } });
+    m.addLayer({ id: 'trail-live', type: 'line', source: 'trail', layout: round, paint: { 'line-width': THICK, 'line-gradient': frontGradient(2, 0.1, T.line) } });
+    // the course: thin everywhere, bright from the ghost on
+    m.addLayer({ id: 'course-route', type: 'line', source: 'course', layout: round, paint: { 'line-color': T.route, 'line-width': THIN } });
+    m.addLayer({ id: 'course-live', type: 'line', source: 'course', layout: round, paint: { 'line-width': THICK, 'line-gradient': frontGradient(0, 1e-6, T.line) } });
     m.addLayer({
       id: 'course-tunnel', type: 'line', source: 'course-tunnel',
       paint: {
@@ -140,7 +187,7 @@ export class MapView {
     m.addLayer({
       id: 'aid', type: 'circle', source: 'aid', minzoom: 12.5,
       paint: {
-        'circle-color': COLORS.aid, 'circle-stroke-color': '#000000', 'circle-stroke-width': 2,
+        'circle-color': T.aid, 'circle-stroke-color': '#000000', 'circle-stroke-width': 2,
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 4, 17, 9],
         'circle-pitch-alignment': 'viewport',
       },
@@ -148,7 +195,7 @@ export class MapView {
     m.addLayer({
       id: 'km-dot', type: 'circle', source: 'km', minzoom: 12.5,
       paint: {
-        'circle-color': '#FFFFFF', 'circle-stroke-color': '#000000', 'circle-stroke-width': 2,
+        'circle-color': T.kmFill, 'circle-stroke-color': T.kmStroke, 'circle-stroke-width': 2,
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 6, 16, 12, 18, 15],
         'circle-pitch-alignment': 'viewport',
       },
@@ -161,7 +208,7 @@ export class MapView {
         'text-allow-overlap': true, 'text-ignore-placement': true,
         'text-pitch-alignment': 'viewport', 'text-rotation-alignment': 'viewport',
       },
-      paint: { 'text-color': '#000000' },
+      paint: { 'text-color': T.kmText },
     });
     m.addLayer({
       id: 'ends', type: 'symbol', source: 'ends',
@@ -169,8 +216,23 @@ export class MapView {
         'text-field': ['get', 'label'], 'text-font': ['Open Sans Bold'], 'text-size': 14,
         'text-allow-overlap': true, 'text-offset': [0, -1.4],
       },
-      paint: { 'text-color': '#FFFFFF', 'text-halo-color': '#000000', 'text-halo-width': 2 },
+      paint: { 'text-color': T.ends, 'text-halo-color': '#000000', 'text-halo-width': 2 },
     });
+  }
+
+  setTheme(name) {
+    this.theme = themeOf(name);
+    if (!this.map) return;
+    const m = this.map, T = this.theme;
+    m.setPaintProperty('course-route', 'line-color', T.route);
+    m.setPaintProperty('trail-route', 'line-color', T.route);
+    m.setPaintProperty('aid', 'circle-color', T.aid);
+    m.setPaintProperty('km-dot', 'circle-color', T.kmFill);
+    m.setPaintProperty('km-dot', 'circle-stroke-color', T.kmStroke);
+    m.setPaintProperty('km-label', 'text-color', T.kmText);
+    m.setPaintProperty('ends', 'text-color', T.ends);
+    this._drawFront(this.front ?? 0);
+    this._drawTrailFront(this.trailFront ?? 2);
   }
 
   _makeMe() {
@@ -180,10 +242,10 @@ export class MapView {
       <svg viewBox="-50 -50 100 100" width="100" height="100" aria-hidden="true">
         <g class="cone"><path d="M0 0 L-24 -46 A52 52 0 0 1 24 -46 Z" fill="url(#coneGrad)"/></g>
         <defs><radialGradient id="coneGrad" cx="0" cy="0" r="52" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+          <stop offset="0" class="cone-stop" stop-opacity="0.55"/><stop offset="1" class="cone-stop" stop-opacity="0"/>
         </radialGradient></defs>
-        <g class="arrow"><path d="M0 -17 L12 13 L0 7 L-12 13 Z" fill="#fff" stroke="#000" stroke-width="3" stroke-linejoin="round"/></g>
-        <circle class="dot" r="9" fill="#fff" stroke="#000" stroke-width="3"/>
+        <g class="arrow"><path class="me-fill" d="M0 -17 L12 13 L0 7 L-12 13 Z" stroke="#000" stroke-width="3" stroke-linejoin="round"/></g>
+        <circle class="dot me-fill" r="9" stroke="#000" stroke-width="3"/>
       </svg>`;
     const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'viewport', pitchAlignment: 'viewport' })
       .setLngLat([-71.235, 46.805]);
@@ -193,18 +255,14 @@ export class MapView {
     };
   }
 
-  _makeGhost() {
-    const el = document.createElement('div');
-    el.className = 'ghost-marker';
-    el.innerHTML = '<div class="ghost-dot"></div>';
-    const marker = new maplibregl.Marker({ element: el, pitchAlignment: 'viewport' }).setLngLat([-71.235, 46.805]);
-    return { el, marker, shown: false };
-  }
-
   setCourse(course) {
     this.course = course;
-    this.splitD = null;
     const line = course.line;
+    const coords = new Array(line.n);
+    for (let i = 0; i < line.n; i++) coords[i] = [line.lon[i], line.lat[i]];
+    this.prog = new Progress(line.lat, line.lon, line.d);
+    this.front = null;
+    this.map.getSource('course').setData(fc([lineFeature(coords)]));
     const kms = [];
     for (let k = 1; k * 1000 < course.total; k++) {
       const [la, lo] = line.latLonAt(k * 1000);
@@ -217,35 +275,86 @@ export class MapView {
     })));
     const [sla, slo] = line.latLonAt(0);
     const [fla, flo] = line.latLonAt(course.total);
-    const ends = [pointFeature(slo, sla, { label: course.id === 'marathon' ? 'START' : 'START' })];
+    const ends = [pointFeature(slo, sla, { label: 'START' })];
     if (Math.hypot(sla - fla, slo - flo) > 0.0004) ends.push(pointFeature(flo, fla, { label: 'FINISH' }));
     else ends[0].properties.label = 'START · FINISH';
     this.map.getSource('ends').setData(fc(ends));
     this.map.getSource('course-tunnel').setData(fc(course.tunnels
       .filter(([a, b]) => b - a > 120)
       .map(([a, b]) => lineFeature(line.slice(a, b).map(([la, lo]) => [lo, la])))));
-    this.setProgress(line.d0);
+    this.setGhostAt(line.d0);
   }
 
   clearCourse() {
     this.course = null;
-    for (const id of ['course-done', 'course-ahead', 'course-tunnel', 'km', 'aid', 'ends']) this.map.getSource(id).setData(fc([]));
+    this.prog = null;
+    for (const id of ['course', 'course-tunnel', 'km', 'aid', 'ends']) this.map.getSource(id).setData(fc([]));
   }
 
-  setProgress(d) {
-    if (!this.course) return;
-    if (this.splitD !== null && Math.abs(d - this.splitD) < 8) return;
-    this.splitD = d;
-    const line = this.course.line;
-    const dd = Math.max(line.d0, Math.min(line.d1, d));
-    const done = dd > line.d0 ? line.slice(line.d0, dd).map(([la, lo]) => [lo, la]) : [];
-    const ahead = line.slice(dd, line.d1).map(([la, lo]) => [lo, la]);
-    this.map.getSource('course-done').setData(fc(done.length > 1 ? [lineFeature(done)] : []));
-    this.map.getSource('course-ahead').setData(fc(ahead.length > 1 ? [lineFeature(ahead)] : []));
+  // The ghost is at official distance d: the course is bright from there on.
+  setGhostAt(d) {
+    if (!this.prog) return;
+    const f = this.prog.at(d);
+    // redraw only when the front moved by more than ~0.2 m
+    if (this.front !== null && Math.abs(f - this.front) < this.prog.eps * 0.4) return;
+    this._drawFront(f);
   }
 
-  setTrail(latlons) {
-    this.map.getSource('trail').setData(fc(latlons.length > 1 ? [lineFeature(latlons.map(([la, lo]) => [lo, la]))] : []));
+  _drawFront(f) {
+    this.front = f;
+    const eps = this.prog ? this.prog.eps : 1e-6;
+    this._setGradient('course-live', frontGradient(f, eps, this.theme.line));
+  }
+
+  // Straight onto the style layer rather than map.setPaintProperty(), which would also fire
+  // a style "data" event and cost one extra identical redraw per change. The line renderer
+  // reads the gradient from the layer and rebuilds it when gradientVersion changes.
+  _setGradient(layerId, value) {
+    const layer = this.map.getLayer(layerId);
+    if (layer && typeof layer.setPaintProperty === 'function' && 'gradientVersion' in layer) {
+      layer.setPaintProperty('line-gradient', value, { validate: false });
+      this.map.triggerRepaint();
+    } else {
+      this.map.setPaintProperty(layerId, 'line-gradient', value, { validate: false });
+    }
+  }
+
+  // Free run: your trail so far ([[lat, lon]], with cumulative distances); the ghost's
+  // stretch of it, from the ghost to you, is bright.
+  setTrail(latlons, cum) {
+    const n = latlons.length;
+    if (n < 2) { this.map.getSource('trail').setData(fc([])); this.trailProg = null; return; }
+    const lats = new Float64Array(n), lons = new Float64Array(n), ds = new Float64Array(n);
+    const coords = new Array(n);
+    for (let i = 0; i < n; i++) {
+      lats[i] = latlons[i][0]; lons[i] = latlons[i][1]; ds[i] = cum[i];
+      coords[i] = [lons[i], lats[i]];
+    }
+    this.trailProg = new Progress(lats, lons, ds);
+    this.map.getSource('trail').setData(fc([lineFeature(coords)]));
+    if (this.trailGhost !== null) this.setTrailGhostAt(this.trailGhost, true);
+  }
+
+  setTrailGhostAt(d, force = false) {
+    this.trailGhost = d;
+    if (!this.trailProg) return;
+    const P = this.trailProg;
+    const f = d < P.d[0] ? 0 : d > P.d[P.d.length - 1] ? 2 : P.at(d);
+    if (!force && this.trailFront !== null && Math.abs(f - this.trailFront) < P.eps * 0.4) return;
+    this._drawTrailFront(f);
+  }
+
+  _drawTrailFront(f) {
+    this.trailFront = f;
+    const eps = this.trailProg ? this.trailProg.eps : 1e-6;
+    this._setGradient('trail-live', frontGradient(f, eps, this.theme.line));
+  }
+
+  clearTrail() {
+    this.trailProg = null;
+    this.trailFront = null;
+    this.trailGhost = null;
+    this.map.getSource('trail').setData(fc([]));
   }
 
   setMe(lat, lon, { heading = null, travel = null } = {}) {
@@ -265,13 +374,6 @@ export class MapView {
   }
 
   hideMe() { if (this.me.shown) { this.me.marker.remove(); this.me.shown = false; } }
-
-  setGhost(lat, lon) {
-    const g = this.ghost;
-    if (lat === null) { if (g.shown) { g.marker.remove(); g.shown = false; } return; }
-    g.marker.setLngLat([lon, lat]);
-    if (!g.shown) { g.marker.addTo(this.map); g.shown = true; }
-  }
 
   setInteractive(on) {
     const m = this.map;
@@ -304,6 +406,12 @@ export class MapView {
 
   follow({ lat, lon, bearing, zoom, pitch = this.pitch }) {
     const h = this.container.clientHeight;
+    // Skip a camera move nobody could see (standing in the corral): no redraw at all.
+    const c = this.cam;
+    if (c && c.h === h && c.pitch === pitch && Math.abs(c.zoom - zoom) < 0.004 &&
+        Math.abs(((bearing - c.bearing + 540) % 360) - 180) < 0.15 &&
+        Math.abs(c.lat - lat) < 2e-6 && Math.abs(c.lon - lon) < 3e-6) return;
+    this.cam = { lat, lon, bearing, zoom, pitch, h };
     this.map.jumpTo({
       center: [lon, lat], bearing, zoom, pitch,
       padding: { top: h * this.padTopFrac * (pitch / this.pitch), bottom: 0, left: 0, right: 0 },
@@ -317,6 +425,7 @@ export class MapView {
     const add = (la, lo) => { minLa = Math.min(minLa, la); maxLa = Math.max(maxLa, la); minLo = Math.min(minLo, lo); maxLo = Math.max(maxLo, lo); };
     for (let i = 0; i < line.n; i++) add(line.lat[i], line.lon[i]);
     if (extra) add(extra[0], extra[1]);
+    this.cam = null;
     this.map.fitBounds([[minLo, minLa], [maxLo, maxLa]], { padding: 28, bearing: 0, pitch: 0, duration: 0 });
   }
 }

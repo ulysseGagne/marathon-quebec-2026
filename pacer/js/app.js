@@ -1,6 +1,6 @@
 // Virtual Pacer — Marathon Beneva de Québec 2026.
-// One number: seconds behind (red) or ahead (green) of a perfect even-effort run,
-// measured where you are on the course.
+// One number: seconds behind (+) or ahead (−) of a perfect even-effort run, measured
+// where you are on the course.
 import { Course } from './course.js';
 import { Tracker } from './tracker.js';
 import { GapDisplay, fmtGap, spokenGap } from './gap.js';
@@ -14,6 +14,7 @@ import { Voice } from './voice.js';
 import { simulate } from './sim.js';
 import { angleDiff, haversine } from './geo.js';
 import { helpHtml } from './help.js';
+import { THEMES, THEME_ORDER, THEME_NOTES, applyTheme, themeName } from './theme.js';
 
 const VERSION = '2026.09.27';
 const $ = (s) => document.querySelector(s);
@@ -40,7 +41,11 @@ const S = {
   wake: new Wake(),
   voice: new Voice(),
   track: null,
-  lastKm: null,
+  lastVoiceK: null,      // last distance step (voice interval) that was announced
+  resume: null,          // catching up after iOS paused the app
+  hiddenAt: 0,
+  peekUntil: 0,          // pocket mode: screen shown until then (ms)
+  holdMsg: null,         // status line text while the menu is being held open
   offline: null, updateReady: false,
   graph: null, dem: null, dest: null,
   practiceDraft: null,
@@ -52,7 +57,9 @@ const S = {
 
 // ---------------------------------------------------------------- boot
 async function boot() {
-  S.voice.enabled = S.settings.voice;
+  S.settings.theme = themeName(S.settings.theme);
+  applyTheme(S.settings.theme);
+  S.voice.enabled = voiceEvery() > 0;
   registerSW();
   try {
     const spec = await (await fetch('data/course.json')).json();
@@ -66,6 +73,7 @@ async function boot() {
   try {
     const buf = await (await fetch('data/basemap.pmtiles')).arrayBuffer();
     await S.map.init(buf);
+    S.map.setTheme(S.settings.theme);
     S.mapReady = true;
   } catch (e) {
     console.error('map failed', e);
@@ -140,7 +148,10 @@ function trackerHint(t) {
 function setupRunObjects() {
   const r = S.run;
   S.gap.reset();
-  S.lastKm = null;
+  S.lastVoiceK = null;
+  S.resume = null;
+  S.peekUntil = 0;
+  S.lastTrailN = 0;
   S.free = null;
   if (r.kind === 'practice') {
     const course = new Course(r.practice.spec);
@@ -161,6 +172,7 @@ function setupRunObjects() {
 // ---------------------------------------------------------------- phases
 function enterPhase(p) {
   S.phase = p;
+  setCompassListening(p !== 'running');
   const app = $('#app');
   app.classList.remove('phase-boot', 'phase-ready', 'phase-running');
   app.classList.add(`phase-${p}`);
@@ -189,6 +201,9 @@ function startGps() {
 
 function onPos(pos) {
   if (S.sim) return;
+  // After the phone wakes up, iOS may hand back the last cached position again: skip it.
+  if (pos.timestamp && pos.timestamp === S.lastRawTs) return;
+  S.lastRawTs = pos.timestamp;
   const c = pos.coords;
   const now = Date.now();
   let t = pos.timestamp || now;
@@ -243,12 +258,23 @@ async function enableCompass() {
       const r = await DeviceOrientationEvent.requestPermission();
       if (r !== 'granted') return false;
     }
-    window.addEventListener('deviceorientation', onOrient);
-    window.addEventListener('deviceorientationabsolute', onOrient);
     S.compass = true;
+    setCompassListening(S.phase !== 'running');
     renderChips();
     return true;
   } catch { return false; }
+}
+
+// The compass fires ~60 events a second. It only turns the view on the start screen; on
+// the run the map turns with the course, so it is switched off there to save battery.
+function setCompassListening(on) {
+  on = !!(on && S.compass);
+  if (on === !!S.compassListening) return;
+  S.compassListening = on;
+  const f = on ? 'addEventListener' : 'removeEventListener';
+  window[f]('deviceorientation', onOrient);
+  window[f]('deviceorientationabsolute', onOrient);
+  if (!on) S.heading = null;
 }
 
 // ---------------------------------------------------------------- runs
@@ -317,8 +343,11 @@ function stopRun() {
   S.run = null;
   S.track = null;
   S.free = null;
+  S.resume = null;
+  if (S.mapReady) S.map.clearTrail();
   useCourse(S.marathon, S.readyPlan);
   $('#finish').hidden = true;
+  $('#pocket').hidden = true;
   enterPhase('ready');
 }
 
@@ -334,7 +363,8 @@ function setT0(t0, source, message) {
 function loop() {
   const step = () => {
     try { frame(); } catch (e) { console.error(e); }
-    setTimeout(step, S.phase === 'running' ? 125 : 200);
+    // 5 frames a second is smooth enough at running speed; pocket mode needs no drawing
+    setTimeout(step, S.phase === 'running' && pocketOn() ? 500 : 200);
   };
   step();
 }
@@ -385,6 +415,7 @@ function runningFrame(now, dt) {
     est = S.tracker.peek(now);
     d = est.d;
   }
+  const estimating = !!(est && est.mode === 'estimating' && (est.age > 6 || (S.course && S.course.inTunnel(d, 30))));
   // gap
   let raw = null;
   if (el >= 0 && d !== null) {
@@ -392,13 +423,16 @@ function runningFrame(now, dt) {
     S.gap.push(raw, now);
   }
   if (S.course && S.course.id === 'marathon' && !S.free) detectCrossing(now, el);
-  // km voice
-  if (d !== null && el > 0) {
-    const km = Math.floor(d / 1000);
-    if (S.lastKm === null) S.lastKm = km;
-    else if (km > S.lastKm && d > 600) {
-      S.lastKm = km;
-      if (!r.finish) S.voice.say(spokenGap(S.gap.state().value ?? 0));
+  if (S.resume) catchUp(now, raw, est);
+  // voice every N metres
+  const every = voiceEvery();
+  if (every && d !== null && el > 0) {
+    const k = Math.floor(d / every);
+    if (S.lastVoiceK === null) S.lastVoiceK = k;
+    else if (k > S.lastVoiceK) {
+      S.lastVoiceK = k;
+      // (while catching up after a pause, catchUp() speaks instead)
+      if (!r.finish && el > 20 && !S.resume) S.voice.say((estimating ? 'About ' : '') + spokenGap(S.gap.state().value ?? 0));
     }
   }
   // remember where you are (for re-acquisition after a reload)
@@ -409,8 +443,47 @@ function runningFrame(now, dt) {
   // finish
   const total = S.course ? S.course.total : null;
   if (!r.finish && total && d !== null && d >= total - 0.5 && el > 60) finishRun(now, el, d, est);
-  renderRunPanel(now, el, d, est);
+  // Pocket mode: nothing to draw, the voice does the talking.
+  const pocket = pocketOn();
+  if (S.lastPanel.pocket !== pocket) {
+    $('#pocket').hidden = !pocket;
+    if (pocket) renderPocket();
+    S.lastPanel = { pocket };
+  }
+  if (pocket) return;
+  renderRunPanel(now, el, d, est, estimating);
   if (S.mapReady) renderRunMap(now, el, d, est, dt);
+}
+
+// After iOS paused the app (screen locked, another app in front), say where you stand as
+// soon as GPS has placed you on the course again.
+function catchUp(now, raw, est) {
+  const R = S.resume;
+  const lastFix = S.free ? S.free.lastT : S.tracker && S.tracker.lastFix;
+  if (!R.fixAt) {
+    if (lastFix && lastFix > R.at && est && est.mode === 'gps') {
+      R.fixAt = now;
+      S.gap.reset();
+      if (raw !== null) S.gap.push(raw, now);
+    } else if (now - R.at > 120000) S.resume = null;
+  } else if (now - R.fixAt > 3000) {
+    S.resume = null;
+    if (!S.run.finish && raw !== null) S.voice.say(spokenGap(S.gap.state().value ?? 0));
+  }
+}
+
+function voiceEvery() {
+  const v = S.settings.voiceEvery;
+  return v > 0 ? v : S.settings.pocket ? 1000 : 0;
+}
+
+function pocketOn() {
+  return S.phase === 'running' && !!S.settings.pocket && !!S.run && !S.run.finish && Date.now() >= S.peekUntil;
+}
+
+function renderPocket() {
+  const every = voiceEvery();
+  $('#pk-sub').textContent = `Voice every ${voiceLabel(every)} · tap to look`;
 }
 
 // When did you actually cross the start line? LIVE switches to it (chip time); after a
@@ -445,21 +518,21 @@ function finishRun(now, el, d, est) {
   saveRunState();
   if (S.track) S.track.flush();
   $('#fin-time').textContent = fmtClock(elapsed);
-  $('#fin-gap').textContent = Math.round(gap) === 0 ? 'Exactly on the ghost'
-    : `${fmtGap(gap)} s ${gap > 0 ? 'behind' : 'ahead of'} the ghost`;
+  const a = Math.abs(Math.round(gap));
+  $('#fin-gap').textContent = a === 0 ? 'Exactly on the ghost'
+    : `${fmtGap(gap)}${a < 100 ? ' s' : ''} · ${gap > 0 ? 'behind' : 'ahead of'} the ghost`;
   $('#finish').hidden = false;
   S.voice.say(`Finish. ${spokenClock(elapsed)}.`);
 }
 
 // ---------------------------------------------------------------- rendering: running
-function renderRunPanel(now, el, d, est) {
+function renderRunPanel(now, el, d, est, estimating) {
   const r = S.run;
   const bottom = $('#bottom');
-  let cls, num, word, status = '';
+  let cls, num, word = '', status = '';
   const g = S.gap.state();
-  // Show "estimating" only for a real outage (the tunnel, or 6 s without GPS): a missed
+  // "Estimating" shows only for a real outage (the tunnel, or 6 s without GPS): a missed
   // fix or two is normal at 1 Hz and should not make the display flicker.
-  const estimating = !!(est && est.mode === 'estimating' && (est.age > 6 || (S.course && S.course.inTunnel(d, 30))));
   if (r.finish) {
     cls = 'even';
     num = fmtClock(r.finish.elapsed);
@@ -473,14 +546,15 @@ function renderRunPanel(now, el, d, est) {
     num = '—';
     word = S.free ? 'WAITING FOR GPS' : 'FINDING COURSE';
   } else {
+    // +3 = 3 s behind the ghost, −3 = 3 s ahead: the sign says it, no words needed
     const s = g.shown ?? 0;
     cls = s > 0 ? 'behind' : s < 0 ? 'ahead' : 'even';
     num = (estimating ? '~' : '') + fmtGap(s);
-    word = s > 0 ? 'BEHIND' : s < 0 ? 'AHEAD' : 'ON PACE';
   }
   // status line
   const fixAge = S.fix ? (Date.now() - S.fixReal) / 1000 : Infinity;
-  if (el >= 0 && d === null && S.tracker && S.tracker.offCourse) status = `You are ${Math.round(S.tracker.offCourse)} m from the course`;
+  if (S.holdMsg && S.holdMsg.until > Date.now()) status = S.holdMsg.text;
+  else if (el >= 0 && d === null && S.tracker && S.tracker.offCourse) status = `You are ${Math.round(S.tracker.offCourse)} m from the course`;
   else if (estimating) status = S.course && S.course.inTunnel(d, 30) ? 'TUNNEL · no GPS · estimating' : `No GPS for ${Math.round(est.age)} s · estimating`;
   else if (fixAge > 8 && !S.sim) status = `No GPS for ${Math.round(fixAge)} s`;
   else if (S.crossHintUntil > now && r.crossing) {
@@ -489,19 +563,18 @@ function renderRunPanel(now, el, d, est) {
   } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · stay in the corral`;
   else if (S.fix && S.fix.acc > 25) status = `Weak GPS ±${Math.round(S.fix.acc)} m`;
   else if (S.needWakeTap) status = 'Tap the screen once to keep it awake';
-  const style = S.settings.panel === 'black' ? ' style-black' : '';
-  const estCls = estimating ? ' est' : '';
-  const full = cls + style + estCls;
+  const full = cls + (estimating ? ' est' : '');
   const P = S.lastPanel;
   if (P.cls !== full) { bottom.className = full; P.cls = full; }
-  if (P.num !== num) {
+  let refit = false;
+  if (P.word !== word) { $('#gap-word').textContent = word; P.word = word; refit = true; }
+  if (P.num !== num || refit) {
     const numEl = $('#gap-num');
     if (num.startsWith('~')) numEl.innerHTML = `<span class="tilde">~</span>${escapeHtml(num.slice(1))}`;
     else numEl.textContent = num;
     P.num = num;
     fitGap(num);
   }
-  if (P.word !== word) { $('#gap-word').textContent = word; P.word = word; }
   if (P.status !== status) { $('#status-line').textContent = status; P.status = status; }
   const elapsedTxt = r.finish ? fmtClock(r.finish.elapsed) : el >= 0 ? fmtClock(el) : '0:00:00';
   if (P.el !== elapsedTxt) { $('#v-elapsed').textContent = elapsedTxt; P.el = elapsedTxt; }
@@ -536,7 +609,7 @@ function renderBadges(el, g) {
     parts.push(`<div class="badge">${mode}</div>`);
     if (el > 0 && g.value !== null && S.plan) {
       const proj = S.plan.target + g.value;
-      parts.push(`<div class="badge big${proj >= 3 * 3600 ? '' : ' ghost'}">→ ${fmtClock(proj)}</div>`);
+      parts.push(`<div class="badge big${proj >= 3 * 3600 ? ' over' : ''}">→ ${fmtClock(proj)}</div>`);
     }
   } else if (r.kind === 'practice') parts.push(`<div class="badge">PRACTICE · ${fmtPace(r.practice.pace)}</div>`);
   else if (r.kind === 'free') parts.push(`<div class="badge">FREE RUN · ${fmtPace(r.free.pace)}</div>`);
@@ -550,40 +623,35 @@ function renderRunMap(now, el, d, est, dt) {
   if (S.free) {
     const f = S.free;
     if (f.pos) {
-      map.setMe(f.pos[0], f.pos[1], { travel: f.bearing });
-      const gd = el > 0 ? (el / r.free.pace) * 1000 : 0;
-      const gp = f.pointAt(gd);
-      map.setGhost(gp ? gp[0] : null, gp ? gp[1] : null);
-      if (!S.lastTrailN || f.trail.length - S.lastTrailN > 3) { map.setTrail(f.trail); S.lastTrailN = f.trail.length; }
+      if (f.trail.length - (S.lastTrailN || 0) > 3) { map.setTrail(f.trail, f.cum); S.lastTrailN = f.trail.length; }
+      // the ghost runs your pace on your own trail: bright from the ghost to you
+      map.setTrailGhostAt(el > 0 ? (el / r.free.pace) * 1000 : -1);
       const target = f.bearing ?? S.cam.bearing;
       S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 1.5);
       S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(300), dt, 2);
       map.follow({ lat: f.pos[0], lon: f.pos[1], bearing: S.cam.bearing, zoom: S.cam.zoom });
+      map.setMe(f.pos[0], f.pos[1], { travel: f.bearing });
     }
     return;
   }
   const course = S.course;
+  // the ghost is the front of the bright line
+  map.setGhostAt(el > 0 && S.plan ? Math.min(course.total, S.plan.distAt(el)) : course.line.d0);
   if (d === null) {
     if (S.fix) {
-      map.setMe(S.fix.lat, S.fix.lon, { heading: S.compass ? S.heading : null });
       map.follow({ lat: S.fix.lat, lon: S.fix.lon, bearing: S.cam.bearing, zoom: 16, pitch: 40 });
+      map.setMe(S.fix.lat, S.fix.lon);
     }
     return;
   }
   const dc = Math.max(course.line.d0, Math.min(course.total, d));
   const [la, lo] = course.line.latLonAt(dc);
   const travel = course.line.bearingAt(dc, 12, 4);
-  map.setProgress(dc);
   const target = course.line.bearingAt(dc + 20, 35, 5);
   S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 1.1);
   S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(course.lookaheadAt(Math.max(0, dc))), dt, 2.5);
   map.follow({ lat: la, lon: lo, bearing: S.cam.bearing, zoom: S.cam.zoom });
   map.setMe(la, lo, { travel });
-  if (el > 0 && S.plan) {
-    const gd = S.plan.distAt(el);
-    const [ga, go] = course.line.latLonAt(Math.min(course.total, gd));
-    map.setGhost(ga, go);
-  } else map.setGhost(null, null);
 }
 
 // ---------------------------------------------------------------- rendering: ready
@@ -668,7 +736,11 @@ function bindUi() {
     S.map.map.on('dragstart', () => { if (S.phase === 'ready') S.follow = false; });
     S.map.map.on('click', (e) => onMapClick(e.lngLat));
   }
-  bindLongPress($('#info'), 900, openRunMenu);
+  bindLongPress($('#info'), MENU_HOLD_MS, openRunMenu);
+  $('#pocket').addEventListener('click', () => {
+    S.peekUntil = Date.now() + 12000; // look for 12 s, then back to black
+    frame();
+  });
   bindRunMenu();
   bindSettings();
   bindPractice();
@@ -679,35 +751,62 @@ function bindUi() {
     if (document.visibilityState === 'visible') {
       S.lastPanel = {};
       if (!S.sim && Date.now() - S.fixReal > 5000) startGps();
-    } else if (S.track) S.track.flush();
+      // iOS froze the app (screen locked or another app in front): no GPS, no voice, no
+      // logic ran meanwhile. Catch up and say the gap as soon as GPS has you again.
+      const away = S.hiddenAt ? Date.now() - S.hiddenAt : 0;
+      S.hiddenAt = 0;
+      if (S.phase === 'running' && S.run && !S.run.finish && away > 15000) {
+        S.resume = { at: clock.now(), fixAt: null };
+        toast(`The app was paused for ${fmtAway(away)} while the screen was off. Catching up…`, 5000);
+      }
+    } else {
+      S.hiddenAt = Date.now();
+      if (S.track) S.track.flush();
+    }
   });
   window.addEventListener('pagehide', () => { if (S.track) S.track.flush(); });
 }
 
+// Opening the run menu takes a 5-second hold on the bottom row: a bar fills across the
+// row and the line above counts down. Letting go early does nothing.
+const MENU_HOLD_MS = 5000;
+
 function bindLongPress(el, ms, fn) {
-  let t0 = 0, raf = 0, active = false, sx = 0, sy = 0;
-  const handle = $('#menu-handle');
-  const reset = () => {
+  let t0 = 0, raf = 0, active = false, sx = 0, sy = 0, shown = -1;
+  const run = $('#run');
+  const say = (text, until) => {
+    S.holdMsg = text ? { text, until } : null;
+    const line = $('#status-line');
+    if (text && line.textContent !== text) line.textContent = text;
+    S.lastPanel.status = text || null;
+  };
+  const stop = (early) => {
+    if (!active) return;
     active = false;
     cancelAnimationFrame(raf);
-    handle.classList.remove('pressing');
-    handle.style.setProperty('--p', 0);
+    run.classList.remove('holding');
+    run.style.setProperty('--hold', 0);
+    if (early) say('Hold ••• for 5 seconds to open the menu', Date.now() + 2500);
+    else say(null);
   };
   el.addEventListener('pointerdown', (e) => {
-    if (S.phase !== 'running') return;
-    active = true; t0 = performance.now(); sx = e.clientX; sy = e.clientY;
-    handle.classList.add('pressing');
+    if (S.phase !== 'running' || active) return;
+    active = true; t0 = performance.now(); sx = e.clientX; sy = e.clientY; shown = -1;
+    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    run.classList.add('holding');
     const step = () => {
       if (!active) return;
-      const p = (performance.now() - t0) / ms;
-      handle.style.setProperty('--p', Math.min(1, p));
-      if (p >= 1) { reset(); fn(); return; }
+      const p = Math.min(1, (performance.now() - t0) / ms);
+      run.style.setProperty('--hold', p);
+      const left = Math.ceil((1 - p) * ms / 1000);
+      if (left !== shown && p < 1) { shown = left; say(`Keep holding · ${left}`, Infinity); }
+      if (p >= 1) { stop(false); fn(); return; }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
   });
-  el.addEventListener('pointermove', (e) => { if (active && Math.hypot(e.clientX - sx, e.clientY - sy) > 25) reset(); });
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => el.addEventListener(ev, reset));
+  el.addEventListener('pointermove', (e) => { if (active && Math.hypot(e.clientX - sx, e.clientY - sy) > 30) stop(true); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => el.addEventListener(ev, () => stop(true)));
 }
 
 function bindHold(btn, ms, fn) {
@@ -788,10 +887,9 @@ function renderRunMenu() {
     S.crossHintUntil = 0;
     renderRunMenu();
   }));
-  const voice = $('#menu-voice');
-  voice.innerHTML = `<button type="button" data-v="1" class="${S.settings.voice ? 'on' : ''}">On</button><button type="button" data-v="0" class="${S.settings.voice ? '' : 'on'}">Off</button>`;
-  const panel = $('#menu-panel');
-  panel.innerHTML = `<button type="button" data-p="color" class="${S.settings.panel === 'color' ? 'on' : ''}">Colour</button><button type="button" data-p="black" class="${S.settings.panel === 'black' ? 'on' : ''}">Black</button>`;
+  $('#menu-voice').innerHTML = voiceButtons();
+  $('#menu-theme').innerHTML = themeButtons();
+  $('#menu-pocket').innerHTML = pocketButtons();
   const rt = $('#btn-retarget');
   if (pendingTarget !== null) {
     rt.hidden = false;
@@ -829,14 +927,21 @@ function bindRunMenu() {
   });
   $('#menu-voice').addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
-    S.settings.voice = b.dataset.v === '1'; S.voice.enabled = S.settings.voice; saveSettings(S.settings);
-    if (S.settings.voice) S.voice.say('Voice on', { force: true });
+    setVoiceEvery(Number(b.dataset.v));
     renderRunMenu(); armMenuTimer();
   });
-  $('#menu-panel').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-p]'); if (!b) return;
-    S.settings.panel = b.dataset.p; saveSettings(S.settings); S.lastPanel = {};
+  $('#menu-theme').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-theme]'); if (!b) return;
+    setTheme(b.dataset.theme);
     renderRunMenu(); armMenuTimer();
+  });
+  $('#menu-pocket').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pocket]'); if (!b) return;
+    setPocket(b.dataset.pocket === '1');
+    if (S.settings.pocket) {
+      closeSheets();
+      toast(`Pocket mode: black screen, voice every ${voiceLabel(voiceEvery())}. Tap the screen to look.`, 5000);
+    } else { renderRunMenu(); armMenuTimer(); }
   });
   $('#btn-export').addEventListener('click', () => exportGpx(S.run));
   bindHold($('#btn-stop'), 5000, () => { closeSheets(); stopRun(); });
@@ -867,13 +972,19 @@ function bindSettings() {
   }));
   $('#set-voice').addEventListener('click', (e) => {
     const b = e.target.closest('[data-v]'); if (!b) return;
-    S.settings.voice = b.dataset.v === '1'; S.voice.enabled = S.settings.voice;
-    if (S.settings.voice) { S.voice.unlock(); S.voice.say('3 behind', { force: true }); }
-    upd();
+    S.voice.unlock();
+    setVoiceEvery(Number(b.dataset.v));
+    renderSettings();
   });
-  $('#set-panel').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-p]'); if (!b) return;
-    S.settings.panel = b.dataset.p; upd();
+  $('#set-theme').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-theme]'); if (!b) return;
+    setTheme(b.dataset.theme);
+    renderSettings();
+  });
+  $('#set-pocket').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pocket]'); if (!b) return;
+    setPocket(b.dataset.pocket === '1');
+    renderSettings();
   });
   $('#btn-sim').addEventListener('click', () => startSim(20));
 }
@@ -903,10 +1014,63 @@ function renderSettings() {
     $('#set-wind-note').textContent = 'Optional, on race morning: the forecast direction the wind comes FROM and its speed. The ghost eases into headwinds and speeds up with tailwinds, weighted by how exposed each stretch is. Same finish time.';
   }
   $('#set-aid').textContent = `${s.aidSeconds} s`;
-  $('#set-voice').innerHTML = `<button type="button" data-v="1" class="${s.voice ? 'on' : ''}">On</button><button type="button" data-v="0" class="${s.voice ? '' : 'on'}">Off</button>`;
-  $('#set-panel').innerHTML = `<button type="button" data-p="color" class="${s.panel === 'color' ? 'on' : ''}">Colour panel</button><button type="button" data-p="black" class="${s.panel === 'black' ? 'on' : ''}">Black + colour digits</button>`;
+  $('#set-voice').innerHTML = voiceButtons();
+  $('#set-voice-note').textContent = s.voiceEvery > 0
+    ? `Every ${voiceLabel(s.voiceEvery)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Nothing else.`
+    : 'No voice (pocket mode still speaks every 1 km).';
+  $('#set-theme').innerHTML = themeButtons();
+  $('#set-theme-note').textContent = THEME_NOTES[s.theme];
+  $('#set-pocket').innerHTML = pocketButtons();
   $('#set-gun').textContent = fmtTimeOfDay(gunMs(), true);
   $('#about').textContent = `Version ${VERSION}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles.`;
+}
+
+const VOICE_STEPS = [0, 250, 500, 1000, 2000];
+function voiceLabel(m) { return m === 0 ? 'Off' : m < 1000 ? `${m} m` : `${m / 1000} km`; }
+
+function voiceButtons() {
+  const v = S.settings.voiceEvery;
+  return VOICE_STEPS.map((m) => `<button type="button" data-v="${m}" class="${v === m ? 'on' : ''}">${voiceLabel(m)}</button>`).join('');
+}
+
+function themeButtons() {
+  const t = S.settings.theme;
+  return THEME_ORDER.map((k) => `<button type="button" data-theme="${k}" class="${t === k ? 'on' : ''}">` +
+    `<span class="swatch" style="background:${THEMES[k].line}"></span>${THEMES[k].label}</button>`).join('');
+}
+
+function pocketButtons() {
+  const p = !!S.settings.pocket;
+  return `<button type="button" data-pocket="0" class="${p ? '' : 'on'}">Off</button><button type="button" data-pocket="1" class="${p ? 'on' : ''}">On</button>`;
+}
+
+function setVoiceEvery(m) {
+  S.settings.voiceEvery = m;
+  saveSettings(S.settings);
+  S.voice.enabled = voiceEvery() > 0;
+  S.lastVoiceK = null; // count the new interval from here
+  if (m > 0) {
+    // a sample on the start screen; the real gap during a run
+    const g = S.phase === 'running' ? S.gap.state().value : null;
+    const every = m < 1000 ? `${m} metres` : m === 1000 ? 'kilometre' : `${m / 1000} kilometres`;
+    S.voice.say(`Every ${every}. ${g === null ? '3 seconds behind' : spokenGap(g)}.`, { force: true });
+  }
+}
+
+function setTheme(name) {
+  S.settings.theme = themeName(name);
+  saveSettings(S.settings);
+  applyTheme(S.settings.theme);
+  if (S.mapReady) S.map.setTheme(S.settings.theme);
+  S.lastPanel = {};
+}
+
+function setPocket(on) {
+  S.settings.pocket = on;
+  saveSettings(S.settings);
+  S.voice.enabled = voiceEvery() > 0;
+  S.peekUntil = 0;
+  S.lastPanel = {};
 }
 
 function flatPace() {
@@ -1186,6 +1350,13 @@ function fmtCountdown(sec) {
   const s = Math.ceil(sec);
   if (s >= 3600) return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function fmtAway(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`;
+  return `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`;
 }
 
 function fmtTimeOfDay(ms, seconds = false) {
