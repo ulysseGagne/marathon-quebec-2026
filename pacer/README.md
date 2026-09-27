@@ -100,6 +100,8 @@ pacer/
   routing, out-and-back practice).
 - Browser check: `PLAYWRIGHT=…/playwright/index.mjs node pacer/test/e2e.mjs out/`.
 - After changing any app file: `node pacer/tools/build_sw.mjs` (new cache version).
+- Icons and the link-preview card (`icons/og.png`), from one drawing in the app's style:
+  `PLAYWRIGHT=…/playwright/index.mjs node pacer/tools/build_icons.mjs`.
 - Data pipeline (Python 3, `pip install pymupdf numpy scipy shapely pyarrow pillow
   mapbox-vector-tile pmtiles`):
   `fetch_overture.py` → `register_startmap.py` → `build_geometry.py` → `build_distance.py` →
