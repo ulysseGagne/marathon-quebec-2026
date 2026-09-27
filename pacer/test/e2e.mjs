@@ -340,11 +340,11 @@ if (!gapsSaid.length) errors.push('voice never said the gap');
   }
 }
 if (gapsSaid.some((g) => g < 5)) errors.push(`off-pace voice spoke inside 5 s: ${JSON.stringify(gapsSaid)}`);
-// bars 1 km before water, every aid station 250 m before it
+// bars 1 km before water, every aid station 200 m before it
 const nSaid = (re) => spoken.filter((t) => re.test(t)).length;
-console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'DECAF', nSaid(/Take decaffeinated bar/), 'water', nSaid(/Water in 250 meters/), 'gel', nSaid(/Gel in 250 meters/));
+console.log('fuel calls: CAF', nSaid(/Take caffeinated bar/), 'DECAF', nSaid(/Take decaffeinated bar/), 'water', nSaid(/Water in 200 meters/), 'gel', nSaid(/Gel in 200 meters/));
 if (nSaid(/Take caffeinated bar/) !== 2 || nSaid(/Take decaffeinated bar/) !== 2) errors.push('bar calls');
-if (nSaid(/Water in 250 meters/) !== 13 || nSaid(/Gel in 250 meters/) !== 2) errors.push('water calls');
+if (nSaid(/Water in 200 meters/) !== 13 || nSaid(/Gel in 200 meters/) !== 2) errors.push('water calls');
 const statuses = await page.evaluate(() => [...window.__status]);
 for (const re of [/^DECAF bar in \d+ m$/, /^CAF bar now$/, /^Water in \d+ m$/, /^Gel in \d+ m$/, /^Water: now$/]) {
   if (!statuses.some((t) => re.test(t))) errors.push(`status line never showed ${re}`);

@@ -568,7 +568,7 @@ function runningFrame(now, dt) {
   const bar = barDue(d, el);
   if (bar) { words.push(bar.caf ? 'Take caffeinated bar.' : 'Take decaffeinated bar.'); clips.push(bar.caf ? 'take_caf' : 'take_decaf'); }
   const aid = waterDue(d, el);
-  if (aid) { const gel = isGel(aid); words.push(gel ? 'Gel in 250 meters.' : 'Water in 250 meters.'); clips.push(gel ? 'gel250' : 'water250'); }
+  if (aid) { const gel = isGel(aid); words.push(gel ? 'Gel in 200 meters.' : 'Water in 200 meters.'); clips.push(gel ? 'gel200' : 'water200'); }
   const every = voiceEvery();
   if (every && d !== null && el > 0) {
     const k = Math.floor(d / every);
@@ -658,9 +658,9 @@ function catchUp(now, raw, est) {
 
 // Fuel and water on the marathon. Each bar is announced where you planned it, 1 km before
 // an aid station: "Take caffeinated bar" or "Take decaffeinated bar" (about 2 min to eat
-// it, 2 more to get ready). Every aid station is announced 250 m before it: "Water in 250
-// meters", or "Gel in 250 meters" at the two gel stations.
-const WATER_CALL = 250;
+// it, 2 more to get ready). Every aid station is announced 200 m before it: "Water in 250
+// meters", or "Gel in 200 meters" at the two gel stations.
+const WATER_CALL = 200;
 
 function barList() {
   return S.course && S.course.id === 'marathon' ? (S.settings.bars || []) : [];
@@ -681,7 +681,7 @@ function barDue(d, el) {
   return null;
 }
 
-// the aid station you just came within 250 m of (once each)
+// the aid station you just came within 200 m of (once each)
 function waterDue(d, el) {
   const aid = aidList();
   if (!aid.length || d === null || el <= 0) return null;
@@ -1535,11 +1535,11 @@ function renderSettings() {
     `<div class="seg compact">${[['caf', 'CAF bar'], ['bar', 'DECAF bar'], ['none', 'Nothing']].map(([k, t]) => `<button type="button" data-pre="${k}" class="${(s.preBar || 'caf') === k ? 'on' : ''}">${t}</button>`).join('')}</div>` +
     `<div class="seg compact stack">${[['1', 'Take the race gels'], ['0', 'Skip them']].map(([k, t]) => `<button type="button" data-gels="${k}" class="${(s.raceGels !== false) === (k === '1') ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   const gels = S.marathon.aid.filter((a) => a.what === 'gels').map((a) => a.km).join(' and ');
-  $('#set-bars-note').textContent = `Type the km where each bar is announced, 1 km before an aid station; add “c” for a caffeinated one (21.9c). The map shows them (CAF, DECAF) and the voice says “Take caffeinated bar” or “Take decaffeinated bar” there: about 2 min to eat it, 2 to get ready. Every aid station is announced 250 m before it: “Water in 250 meters”, or “Gel in 250 meters” at km ${gels}. Spots are checked for slope, the tunnels and the station 1 km on.`;
+  $('#set-bars-note').textContent = `Type the km where each bar is announced, 1 km before an aid station; add “c” for a caffeinated one (21.9c). The map shows them (CAF, DECAF) and the voice says “Take caffeinated bar” or “Take decaffeinated bar” there: about 2 min to eat it, 2 to get ready. Every aid station is announced 200 m before it: “Water in 200 meters”, or “Gel in 200 meters” at km ${gels}. Spots are checked for slope, the tunnels and the station 1 km on.`;
   $('#set-bars-suggest').hidden = JSON.stringify(bars) === JSON.stringify(SUGGESTED_BARS) && (s.preBar || 'caf') === 'caf' && s.raceGels !== false;
   const vm = s.voiceMode || 'offpace';
   $('#set-voice-note').textContent = vm === 'offpace'
-    ? `Warnings start ${band} s from the ghost, either way, then come at every 5 s step, getting worse and getting better: “${band}, ${band + 5}, ${band + 10} seconds behind”, then “${band + 5}”, “${band}” as you come back; the same ahead. Right after a warning, “on pace” the moment you meet the ghost again. Nothing else. ${band === 5 ? 'Expect one every 10 minutes or so.' : 'Rarely speaks; 5 s keeps you closer.'} Also your bars (“Take caffeinated bar”) and every aid station (“Water in 250 meters”).`
+    ? `Warnings start ${band} s from the ghost, either way, then come at every 5 s step, getting worse and getting better: “${band}, ${band + 5}, ${band + 10} seconds behind”, then “${band + 5}”, “${band}” as you come back; the same ahead. Right after a warning, “on pace” the moment you meet the ghost again. Nothing else. ${band === 5 ? 'Expect one every 10 minutes or so.' : 'Rarely speaks; 5 s keeps you closer.'} Also your bars (“Take caffeinated bar”) and every aid station (“Water in 200 meters”).`
     : vm === 'every'
       ? `Every ${voiceLabel(s.voiceEvery || 1000)} of official distance: “3 seconds behind”, “5 seconds ahead” or “on pace”. Also your bars and every aid station.`
       : 'No voice. (Pocket mode still speaks when off pace.)';

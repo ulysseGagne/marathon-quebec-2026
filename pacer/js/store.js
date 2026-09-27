@@ -8,7 +8,7 @@ const TRACK_PREFIX = 'pacer.track.';
 // The fuel plan: one bar before the start, four on the course around the race's two gel
 // stations, a fuel stop every 21-29 min from km 4.8 to km 31.9 (nothing after 2:16: food
 // that late has little time left to help). Each bar is announced exactly 1 km before a
-// water station (about 2 min to eat it, 2 to get ready, then "Water in 250 meters"), on
+// water station (about 2 min to eat it, 2 to get ready, then "Water in 200 meters"), on
 // ground that is flat or gently downhill and outside the tunnels. XACT bars are 25 g of
 // carbs; the Performance ones (CAF) add 50 mg of caffeine: one before the start (it peaks
 // 45-60 min after), two for the second half. The race gels count as ~25 g each.
@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS = {
   voiceMix: true,                  // recorded voice over the music (false: iPhone voice, pauses music)
   bars: SUGGESTED_BARS.map((b) => ({ ...b })), // [{km, caf}] bars on the course, announced there
   preBar: 'caf',                   // before the start: 'caf', 'bar' or 'none'
-  raceGels: true,                  // take the race's gels (km 15.1 and 27): "Gel in 250 meters"
+  raceGels: true,                  // take the race's gels (km 15.1 and 27): "Gel in 200 meters"
   theme: 'mono',                   // colour theme (js/theme.js)
   pocket: false,                   // black screen during the run, voice only
   gunOffset: 0,                    // seconds to add to the official 8:00:00 gun

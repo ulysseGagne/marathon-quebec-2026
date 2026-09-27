@@ -50,8 +50,8 @@ def phrases():
     p['offpace'] = 'Only when off pace.'
     p['take_caf'] = 'Take caffeinated bar.'
     p['take_decaf'] = 'Take decaffeinated bar.'
-    p['water250'] = 'Water in 250 meters.'
-    p['gel250'] = 'Gel in 250 meters.'
+    p['water200'] = 'Water in 200 meters.'
+    p['gel200'] = 'Gel in 200 meters.'
     return p
 
 

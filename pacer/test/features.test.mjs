@@ -66,7 +66,7 @@ test('voice: every gap and cue the app says has a recorded clip', () => {
   }
   // and the ones pushed as a choice: clips.push(x ? 'a' : 'b')
   for (const m of app.matchAll(/clips\.push\([^)]*?'([a-z0-9_]+)' : '([a-z0-9_]+)'\)/g)) ids.add(m[1]).add(m[2]);
-  for (const id of ['take_caf', 'take_decaf', 'water250', 'gel250']) assert.ok(ids.has(id), `app never plays ${id}`);
+  for (const id of ['take_caf', 'take_decaf', 'water200', 'gel200']) assert.ok(ids.has(id), `app never plays ${id}`);
   for (const id of ids) assert.ok(clip(id), `missing voice/${id}.mp3`);
 });
 
