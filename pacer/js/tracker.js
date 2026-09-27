@@ -228,10 +228,11 @@ export class Tracker {
     }
   }
 
-  // Time (ms) at which the estimate crossed official distance dLine going forward and
-  // kept going (+60 m within 90 s). Searches the last 20 minutes.
-  crossingOf(dLine, afterT = -Infinity) {
+  // Times (ms) at which the estimate crossed official distance dLine going forward and
+  // kept going (+60 m within 90 s), oldest first. Searches the last 20 minutes.
+  crossingsOf(dLine, afterT = -Infinity) {
     const h = this.history;
+    const out = [];
     for (let i = 1; i < h.length; i++) {
       const a = h[i - 1], b = h[i];
       if (b.t < afterT) continue;
@@ -242,9 +243,15 @@ export class Tracker {
         }
         if (!ok) continue;
         const f = (dLine - a.d) / (b.d - a.d);
-        return a.t + f * (b.t - a.t);
+        const tc = a.t + f * (b.t - a.t);
+        if (tc >= afterT) out.push(tc);
       }
     }
-    return null;
+    return out;
+  }
+
+  crossingOf(dLine, afterT = -Infinity) {
+    const c = this.crossingsOf(dLine, afterT);
+    return c.length ? c[0] : null;
   }
 }

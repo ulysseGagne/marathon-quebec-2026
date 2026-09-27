@@ -152,5 +152,6 @@ Even effort, same method as the marathon: a 6:05/km flat-equivalent pace, 6:09/k
 - `guide-coureur.pdf`: official runner's guide.
 - `index.html`: map for supporters, in French, online at https://ulyssegagne.github.io/marathon-quebec-2026/. A time slider shows where Ulysse and Indiana should be according to their plans, with toggles for àVélo stations and km markers.
 - `wallpapers/`: race-plan wallpaper for the phone (1080×2340) and a square version.
+- `pacer/`: Ulysse's virtual pacer, online at https://ulyssegagne.github.io/marathon-quebec-2026/pacer/. One big number: seconds behind (red) or ahead (green) of an even-effort 2:59:30 run, measured where he is on the course, offline, with a practice mode. See `pacer/README.md`. `pacer/data/marathon-2026.gpx` is the rebuilt course (street centrelines, official start and finish lines, both passes through Tunnel Joseph-Samson).
 
 Sources: [race page](https://www.jecoursqc.com/en/beneva-quebec-city-marathon-presented-by-montellier/races/), [42,2 km map](https://www.jecoursqc.com/wp-content/uploads/2026/09/MDQ_parcours-42-2km.pdf), [21,1 km map](https://www.jecoursqc.com/wp-content/uploads/2026/09/MDQ_parcours-21-1km.pdf), [marathon GPX](https://www.calculitineraires.fr/?id=1323345).

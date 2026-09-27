@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pacer">
+<meta name="theme-color" content="#000000">
+<meta name="format-detection" content="telephone=no">
+<title>Virtual Pacer</title>
+<meta name="description" content="Virtual pacer for the 2026 Marathon Beneva de Québec: one big number, seconds ahead or behind a perfect even-effort run.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app" class="phase-boot">
+
+  <section id="top">
+    <div id="map" aria-label="Course map"></div>
+    <div id="chips" class="overlay-top-left"></div>
+    <div id="badges" class="overlay-top-right"></div>
+    <button id="btn-recenter" class="map-btn" type="button" hidden aria-label="Recenter on me">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </button>
+    <button id="btn-overview" class="map-btn map-btn-2" type="button" hidden aria-label="Whole course">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div id="sim-banner" hidden>SIMULATION · <span id="sim-speed"></span> · <button id="btn-sim-stop" type="button">stop</button></div>
+  </section>
+
+  <section id="bottom">
+    <!-- Ready: before a run -->
+    <div id="ready" class="pane">
+      <div id="ready-title">
+        <div class="rt-name" id="rt-name">Marathon Beneva de Québec</div>
+        <div class="rt-sub" id="rt-sub">Target 2:59:30 · even effort</div>
+      </div>
+      <button id="btn-start" class="big-btn go" type="button">START</button>
+      <button id="btn-live" class="big-btn live" type="button"><span class="live-dot"></span>LIVE <span id="live-sub">· gun 8:00:00</span></button>
+      <nav id="ready-nav">
+        <button type="button" data-open="practice">Practice</button>
+        <button type="button" data-open="plan">Splits</button>
+        <button type="button" data-open="settings">Settings</button>
+        <button type="button" data-open="help">Help</button>
+      </nav>
+    </div>
+
+    <!-- Running: the one number -->
+    <div id="run" class="pane" aria-live="off">
+      <div id="gap-wrap"><div id="gap-num">0</div></div>
+      <div id="gap-word">ON PACE</div>
+      <div id="status-line"></div>
+      <div id="info">
+        <div class="cell"><span class="lbl">time</span><span id="v-elapsed" class="val">0:00:00</span></div>
+        <div class="cell"><span class="lbl">km</span><span id="v-km" class="val">0.00</span></div>
+        <div class="cell"><span class="lbl">ghost</span><span id="v-pace" class="val">4:15</span></div>
+        <div id="menu-handle" class="cell handle" aria-label="Hold for run menu"><span class="dots">•••</span><span class="lbl">hold</span></div>
+      </div>
+      <div id="hold-hint"></div>
+    </div>
+  </section>
+
+  <!-- Sheets -->
+  <div id="scrim" hidden></div>
+
+  <div id="sheet-menu" class="sheet" hidden>
+    <div class="sheet-head"><h2>Run</h2><button class="x" type="button" data-close>Close</button></div>
+    <div class="sheet-body">
+      <p id="menu-summary" class="muted"></p>
+      <div id="menu-sync"></div>
+      <div class="menu-row"><span class="menu-label">Nudge start</span>
+        <div class="seg">
+          <button type="button" class="hold" data-nudge="-5">−5 s</button>
+          <button type="button" class="hold" data-nudge="-1">−1 s</button>
+          <button type="button" class="hold" data-nudge="1">+1 s</button>
+          <button type="button" class="hold" data-nudge="5">+5 s</button>
+        </div>
+      </div>
+      <p class="muted small">Hold a button 1 s to apply. “+” means you really started later.</p>
+      <div class="menu-row"><span class="menu-label">New finish target</span>
+        <div class="seg">
+          <button type="button" data-retarget="-60">−1 min</button>
+          <button type="button" data-retarget="-15">−15 s</button>
+          <button type="button" data-retarget="15">+15 s</button>
+          <button type="button" data-retarget="60">+1 min</button>
+        </div>
+      </div>
+      <button id="btn-retarget" type="button" class="wide hold" hidden></button>
+      <div class="menu-row"><span class="menu-label">Voice</span><div class="seg" id="menu-voice"></div></div>
+      <div class="menu-row"><span class="menu-label">Number</span><div class="seg" id="menu-panel"></div></div>
+      <button id="btn-export" type="button" class="wide">Export GPX of this run</button>
+      <button id="btn-stop" type="button" class="wide danger hold5"><span class="fill"></span><span class="t">Hold 5 s to stop the run</span></button>
+    </div>
+  </div>
+
+  <div id="sheet-settings" class="sheet" hidden>
+    <div class="sheet-head"><h2>Settings</h2><button class="x" type="button" data-close>Done</button></div>
+    <div class="sheet-body">
+      <div class="set-block">
+        <div class="set-title">Finish target</div>
+        <div class="big-value" id="set-target">2:59:30</div>
+        <div class="seg">
+          <button type="button" data-target="-60">−1 min</button>
+          <button type="button" data-target="-10">−10 s</button>
+          <button type="button" data-target="10">+10 s</button>
+          <button type="button" data-target="60">+1 min</button>
+        </div>
+        <p class="muted small" id="set-target-note"></p>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Race-morning wind <span class="muted">(optional)</span></div>
+        <div class="big-value" id="set-wind">Still air</div>
+        <div class="seg wrap" id="wind-dirs"></div>
+        <div class="seg">
+          <button type="button" data-wind="-5">−5 km/h</button>
+          <button type="button" data-wind="5">+5 km/h</button>
+          <button type="button" data-wind="0">None</button>
+        </div>
+        <p class="muted small" id="set-wind-note">Enter the forecast (direction the wind comes FROM, sustained speed). The ghost eases into headwinds and speeds up with tailwinds, weighted by how exposed each stretch is. Same finish time.</p>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Aid stations</div>
+        <div class="big-value" id="set-aid">0 s</div>
+        <div class="seg">
+          <button type="button" data-aid="-1">−1 s</button>
+          <button type="button" data-aid="1">+1 s</button>
+        </div>
+        <p class="muted small">Seconds the ghost loses at each of the 15 aid stations (drinking). 0 = the ghost runs through.</p>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Voice at each km</div>
+        <div class="seg" id="set-voice"></div>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Big number style</div>
+        <div class="seg" id="set-panel"></div>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Live mode gun time</div>
+        <div class="big-value" id="set-gun">8:00:00</div>
+        <div class="seg">
+          <button type="button" data-gun="-60">−1 min</button>
+          <button type="button" data-gun="60">+1 min</button>
+          <button type="button" data-gun="0">Reset</button>
+        </div>
+        <p class="muted small">Only change this if the start is delayed.</p>
+      </div>
+      <div class="set-block">
+        <button type="button" class="wide" id="btn-sim">Watch a simulated race (20×)</button>
+        <button type="button" class="wide" data-open="help">How it works · race-day checklist</button>
+      </div>
+      <p class="muted small" id="about"></p>
+    </div>
+  </div>
+
+  <div id="sheet-practice" class="sheet" hidden>
+    <div class="sheet-head"><h2>Practice</h2><button class="x" type="button" data-close>Close</button></div>
+    <div class="sheet-body">
+      <p class="muted">Try the pacer on a real run this week. The route starts where you are standing.</p>
+      <div class="set-block">
+        <div class="set-title">Destination</div>
+        <div class="big-value small-value" id="pr-dest">Pavillon Charles-De Koninck (DKN)</div>
+        <div class="seg">
+          <button type="button" id="pr-dkn">DKN</button>
+          <button type="button" id="pr-pick">Tap the map…</button>
+        </div>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Route</div>
+        <div class="seg" id="pr-return"></div>
+      </div>
+      <div class="set-block">
+        <div class="set-title">Ghost average pace</div>
+        <div class="big-value" id="pr-pace">4:15 /km</div>
+        <div class="seg">
+          <button type="button" data-ppace="-15">−15 s</button>
+          <button type="button" data-ppace="-5">−5 s</button>
+          <button type="button" data-ppace="5">+5 s</button>
+          <button type="button" data-ppace="15">+15 s</button>
+        </div>
+      </div>
+      <p id="pr-info" class="info-box"></p>
+      <button type="button" class="big-btn go" id="pr-start" disabled>START PRACTICE</button>
+      <button type="button" class="wide" id="pr-free">Free run (no route, anywhere)</button>
+    </div>
+  </div>
+
+  <div id="sheet-plan" class="sheet" hidden>
+    <div class="sheet-head"><h2>Splits</h2><button class="x" type="button" data-close>Close</button></div>
+    <div class="sheet-body" id="plan-body"></div>
+  </div>
+
+  <div id="sheet-help" class="sheet" hidden>
+    <div class="sheet-head"><h2>How it works</h2><button class="x" type="button" data-close>Close</button></div>
+    <div class="sheet-body prose" id="help-body"></div>
+  </div>
+
+  <div id="finish" hidden>
+    <div class="fin-label">FINISH</div>
+    <div class="fin-time" id="fin-time">2:59:24</div>
+    <div class="fin-gap" id="fin-gap"></div>
+    <button type="button" class="wide" id="fin-export">Export GPX</button>
+    <button type="button" class="wide" id="fin-close">Back to the map</button>
+  </div>
+
+  <div id="toast" hidden></div>
+  <div id="boot-msg">Loading the course…</div>
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script src="vendor/NoSleep.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -59,8 +59,8 @@ export function* simulate(course, plan, opts = {}) {
     else {
       dPos = d;
       const planV = plan.speedAt(Math.min(d, course.total - 1));
-      drift += gauss(rnd) * 0.002 * Math.sqrt(dt);
-      drift = Math.max(-0.04, Math.min(0.04, drift));
+      // mean-reverting pace drift: about ±1.5 %, remembered for ~10 minutes
+      drift += -drift * (dt / 600) + 0.015 * Math.sqrt((2 * dt) / 600) * gauss(rnd);
       const k = speedFactor ? speedFactor(t, d) : (1 / (1 + bias)) * (1 + wobble * Math.sin((2 * Math.PI * t) / 420) + drift);
       v = planV * k;
     }

@@ -1,0 +1,1196 @@
+// Virtual Pacer — Marathon Beneva de Québec 2026.
+// One number: seconds behind (red) or ahead (green) of a perfect even-effort run,
+// measured where you are on the course.
+import { Course } from './course.js';
+import { Tracker } from './tracker.js';
+import { GapDisplay, fmtGap, spokenGap } from './gap.js';
+import { fmtClock, fmtPace } from './model.js';
+import { MapView } from './mapview.js';
+import { Graph, Dem, practiceSpec } from './practice.js';
+import { FreeRun } from './freerun.js';
+import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx } from './store.js';
+import { Wake } from './wake.js';
+import { Voice } from './voice.js';
+import { simulate } from './sim.js';
+import { angleDiff, haversine } from './geo.js';
+import { helpHtml } from './help.js';
+
+const VERSION = '2026.09.27';
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+const clock = { now: () => Date.now() };
+
+const S = {
+  settings: loadSettings(),
+  marathon: null,        // Course
+  course: null,          // active Course (marathon or practice)
+  plan: null,            // active Plan
+  readyPlan: null,       // marathon plan with current settings (ready screen)
+  tracker: null,
+  free: null,            // FreeRun when kind === 'free'
+  gap: new GapDisplay(),
+  run: null,             // persisted run object
+  phase: 'boot',
+  fix: null, fixReal: 0, gpsError: null, watchId: null,
+  heading: null, headingAt: 0, compass: false,
+  map: null, mapReady: false,
+  follow: true, overviewShown: false,
+  cam: { bearing: 0, zoom: 16, lastReal: 0 },
+  wake: new Wake(),
+  voice: new Voice(),
+  track: null,
+  lastKm: null,
+  offline: null, updateReady: false,
+  graph: null, dem: null, dest: null,
+  practiceDraft: null,
+  sim: null,
+  lastPanel: {},
+  menuTimer: null,
+  crossHintUntil: 0,
+};
+
+// ---------------------------------------------------------------- boot
+async function boot() {
+  S.voice.enabled = S.settings.voice;
+  registerSW();
+  try {
+    const spec = await (await fetch('data/course.json')).json();
+    S.marathon = new Course({ ...spec, id: 'marathon' });
+  } catch (e) {
+    $('#boot-msg').textContent = 'Could not load the course. Open once with a connection.';
+    throw e;
+  }
+  S.readyPlan = planFor(S.marathon, null);
+  S.map = new MapView($('#map'));
+  try {
+    const buf = await (await fetch('data/basemap.pmtiles')).arrayBuffer();
+    await S.map.init(buf);
+    S.mapReady = true;
+  } catch (e) {
+    console.error('map failed', e);
+    toast('Map could not load: the number still works.');
+  }
+  bindUi();
+  startGps();
+  if (typeof DeviceOrientationEvent === 'undefined' || typeof DeviceOrientationEvent.requestPermission !== 'function') {
+    enableCompass(); // Android / desktop: no permission prompt
+  }
+  const saved = loadRun();
+  if (saved && !saved.stopped && clock.now() - saved.t0 < 8 * 3600e3) {
+    S.run = saved;
+    setupRunObjects();
+    S.track = new TrackLog(saved.id);
+    enterPhase('running');
+    const ok = await S.wake.enable();
+    if (!ok) S.needWakeTap = true;
+    toast('Run resumed');
+  } else {
+    if (saved) clearRun();
+    useCourse(S.marathon, S.readyPlan);
+    enterPhase('ready');
+  }
+  loop();
+  setInterval(watchdog, 5000);
+}
+
+function planFor(course, run) {
+  let p;
+  if (run && (run.kind === 'practice' || run.kind === 'free')) {
+    p = course.plan({ target: run.target });
+  } else {
+    const src = run || S.settings;
+    p = course.plan({ target: src.target, wind: src.wind, aidSeconds: src.aidSeconds });
+  }
+  if (run && run.replan) p = p.replan(run.replan.d, run.replan.t, run.replan.target);
+  return p;
+}
+
+function useCourse(course, plan, { keepTracker = false } = {}) {
+  const same = keepTracker && S.course === course && S.tracker;
+  S.course = course;
+  S.plan = plan;
+  if (!same) {
+    S.tracker = course ? new Tracker(course, { hint: trackerHint, plan: () => S.plan }) : null;
+    if (S.fix && S.tracker && Date.now() - S.fixReal < 10000) S.tracker.update({ ...S.fix, t: clock.now() });
+  }
+  if (S.mapReady) {
+    if (course) S.map.setCourse(course); else S.map.clearCourse();
+  }
+  S.overviewShown = false;
+}
+
+function trackerHint(t) {
+  const r = S.run;
+  if (r && S.plan && t > r.t0) {
+    const el = (t - r.t0) / 1000;
+    const d = S.plan.distAt(el);
+    return { d, v: S.plan.speedAt(d), sd: 700 };
+  }
+  return { d: 0, v: 0, sd: 250 };
+}
+
+function setupRunObjects() {
+  const r = S.run;
+  S.gap.reset();
+  S.lastKm = null;
+  S.free = null;
+  if (r.kind === 'practice') {
+    const course = new Course(r.practice.spec);
+    useCourse(course, null);
+    S.plan = planFor(course, r);
+  } else if (r.kind === 'free') {
+    useCourse(null, null);
+    S.free = new FreeRun(r.free.pace);
+    S.plan = null;
+  } else {
+    // keep the tracker from the start screen: its history lets LIVE find your chip time
+    // even if you press it after crossing the start line
+    useCourse(S.marathon, null, { keepTracker: true });
+    S.plan = planFor(S.marathon, r);
+  }
+}
+
+// ---------------------------------------------------------------- phases
+function enterPhase(p) {
+  S.phase = p;
+  const app = $('#app');
+  app.classList.remove('phase-boot', 'phase-ready', 'phase-running');
+  app.classList.add(`phase-${p}`);
+  closeSheets();
+  if (S.mapReady) S.map.setInteractive(p === 'ready');
+  $('#btn-recenter').hidden = p !== 'ready';
+  $('#btn-overview').hidden = p !== 'ready';
+  S.lastPanel = {};
+  if (p === 'ready') {
+    S.follow = true;
+    S.overviewShown = false;
+    $('#bottom').className = '';
+    renderReady();
+  }
+  renderChips();
+}
+
+// ---------------------------------------------------------------- GPS & compass
+function startGps() {
+  if (!('geolocation' in navigator)) { S.gpsError = 'No GPS on this device'; renderChips(); return; }
+  if (S.watchId !== null) navigator.geolocation.clearWatch(S.watchId);
+  S.watchId = navigator.geolocation.watchPosition(onPos, onPosError, {
+    enableHighAccuracy: true, maximumAge: 0, timeout: 25000,
+  });
+}
+
+function onPos(pos) {
+  if (S.sim) return;
+  const c = pos.coords;
+  const now = Date.now();
+  let t = pos.timestamp || now;
+  if (Math.abs(t - now) > 10000) t = now;
+  S.gpsError = null;
+  handleFix({ t, lat: c.latitude, lon: c.longitude, acc: c.accuracy, speed: c.speed ?? -1, heading: c.heading });
+}
+
+function onPosError(err) {
+  if (err.code === 1) S.gpsError = 'Location blocked';
+  else if (err.code === 2) S.gpsError = 'No GPS signal';
+  else S.gpsError = 'GPS slow';
+  renderChips();
+}
+
+function handleFix(fix) {
+  S.fix = fix;
+  S.fixReal = Date.now();
+  if (S.tracker) S.tracker.update(fix);
+  if (S.free && S.phase === 'running') S.free.update(fix);
+  if (S.run && S.track && !S.run.sim) {
+    const est = S.tracker ? S.tracker.peek(fix.t) : S.free ? { d: S.free.d } : null;
+    S.track.add(fix.t, fix.lat, fix.lon, fix.acc, est ? est.d : null);
+  }
+  if (S.practiceDraft && S.practiceDraft.waiting) buildPracticeRoute();
+}
+
+function watchdog() {
+  if (S.sim) return;
+  if (S.phase === 'running' && Date.now() - S.fixReal > 20000 && !(S.course && S.tracker && S.tracker.x && S.course.inTunnel(S.tracker.peek(clock.now()).d, 80))) {
+    startGps(); // iOS sometimes stalls the watch; restarting it helps
+  }
+  if (S.track) S.track.flush();
+  renderChips();
+}
+
+function onOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h === null) return;
+  const so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  h = (h + so + 360) % 360;
+  S.heading = S.heading === null ? h : (S.heading + angleDiff(S.heading, h) * 0.25 + 360) % 360;
+  S.headingAt = Date.now();
+}
+
+async function enableCompass() {
+  if (S.compass) return true;
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if (r !== 'granted') return false;
+    }
+    window.addEventListener('deviceorientation', onOrient);
+    window.addEventListener('deviceorientationabsolute', onOrient);
+    S.compass = true;
+    renderChips();
+    return true;
+  } catch { return false; }
+}
+
+// ---------------------------------------------------------------- runs
+function gunMs() {
+  return S.marathon.gun + (S.settings.gunOffset || 0) * 1000;
+}
+
+function newRun(kind, mode, extra = {}) {
+  const now = clock.now();
+  const base = {
+    id: `r${now}`, v: 1, kind, mode, created: now,
+    t0: now, t0Source: 'tap', gunMs: gunMs(), crossing: null, finish: null, replan: null,
+    target: S.settings.target, wind: { ...S.settings.wind }, aidSeconds: S.settings.aidSeconds,
+    sim: !!S.sim, stopped: false,
+  };
+  if (mode === 'live') { base.t0 = base.gunMs; base.t0Source = 'gun'; }
+  return { ...base, ...extra };
+}
+
+async function beginRun(run) {
+  S.voice.unlock();
+  enableCompass();
+  S.wake.enable().then((m) => { if (!m) S.needWakeTap = true; });
+  S.run = run;
+  if (!run.sim) {
+    TrackLog.clearAll();
+    saveRun(run);
+    S.track = new TrackLog(run.id);
+    try { localStorage.setItem('pacer.lastrun', JSON.stringify({ id: run.id, kind: run.kind, created: run.created })); } catch { /* ignore */ }
+  } else S.track = null;
+  setupRunObjects();
+  enterPhase('running');
+  const early = clock.now() < run.t0;
+  S.voice.say(early ? 'Live mode. Waiting for the gun.' : run.kind === 'race' ? 'Go. Pacer running.' : 'Go.');
+}
+
+function startManual() {
+  beginRun(newRun('race', 'manual'));
+}
+
+function startLive() {
+  const now = clock.now();
+  const g = gunMs();
+  if (g - now > 3 * 3600e3) {
+    toast(`Live mode counts from the ${fmtTimeOfDay(g)} gun on Sunday, October 4 (available from ${fmtTimeOfDay(g - 3 * 3600e3)} that morning). Use START or Practice to try the app.`, 7000);
+    return;
+  }
+  if (now - g > 7 * 3600e3) { toast('The race is over — use START.', 4000); return; }
+  beginRun(newRun('race', 'live'));
+}
+
+function saveRunState() {
+  if (S.run && !S.run.sim) saveRun(S.run);
+}
+
+function stopRun() {
+  const r = S.run;
+  if (!r) return;
+  r.stopped = true;
+  if (S.track) S.track.flush();
+  if (!r.sim) clearRun();
+  S.wake.disable();
+  S.voice.say('Pacer stopped.');
+  if (S.sim) endSim(false);
+  S.run = null;
+  S.track = null;
+  S.free = null;
+  useCourse(S.marathon, S.readyPlan);
+  $('#finish').hidden = true;
+  enterPhase('ready');
+}
+
+function setT0(t0, source, message) {
+  S.run.t0 = t0;
+  S.run.t0Source = source;
+  saveRunState();
+  S.gap.reset();
+  if (message) toast(message);
+}
+
+// ---------------------------------------------------------------- main loop
+function loop() {
+  const step = () => {
+    try { frame(); } catch (e) { console.error(e); }
+    setTimeout(step, S.phase === 'running' ? 125 : 200);
+  };
+  step();
+}
+
+function frame() {
+  if (document.hidden || S.phase === 'boot') return;
+  const now = clock.now();
+  const real = Date.now();
+  const dtReal = S.cam.lastReal ? Math.min(1, (real - S.cam.lastReal) / 1000) : 0.1;
+  S.cam.lastReal = real;
+  if (S.sim) feedSim(now);
+  if (S.phase === 'running') runningFrame(now, dtReal);
+  else readyFrame(now, dtReal);
+}
+
+function readyFrame(now, dt) {
+  if (!S.mapReady) return;
+  const fix = S.fix;
+  const fresh = fix && Date.now() - S.fixReal < 30000;
+  if (fresh) {
+    const heading = S.compass && Date.now() - S.headingAt < 3000 ? S.heading : null;
+    S.map.setMe(fix.lat, fix.lon, { heading });
+  }
+  const start = S.course ? S.course.line.latLonAt(0) : null;
+  const nearStart = fresh && start && haversine(fix.lat, fix.lon, start[0], start[1]) < 1500;
+  if (S.follow && fresh && (nearStart || S.course?.id === 'practice')) {
+    const target = S.compass && S.heading !== null ? S.heading : 0;
+    S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 0.6);
+    S.map.follow({ lat: fix.lat, lon: fix.lon, bearing: S.cam.bearing, zoom: 16.2, pitch: 45 });
+    S.overviewShown = false;
+  } else if (!S.overviewShown && S.follow) {
+    S.map.overview(fresh ? [fix.lat, fix.lon] : null);
+    S.overviewShown = true;
+    S.cam.bearing = 0;
+  }
+  renderReadyLive(now);
+}
+
+function runningFrame(now, dt) {
+  const r = S.run;
+  const el = (now - r.t0) / 1000;
+  let est = null;
+  let d = null;
+  if (S.free) {
+    const f = S.free.peek(now);
+    if (f) { est = f; d = f.d; }
+  } else if (S.tracker && S.tracker.tracking) {
+    est = S.tracker.peek(now);
+    d = est.d;
+  }
+  // gap
+  let raw = null;
+  if (el >= 0 && d !== null) {
+    raw = S.free ? el - (d / 1000) * r.free.pace : el - S.plan.timeAt(Math.max(0, d));
+    S.gap.push(raw, now);
+  }
+  if (S.course && S.course.id === 'marathon' && !S.free) detectCrossing(now, el);
+  // km voice
+  if (d !== null && el > 0) {
+    const km = Math.floor(d / 1000);
+    if (S.lastKm === null) S.lastKm = km;
+    else if (km > S.lastKm && d > 600) {
+      S.lastKm = km;
+      if (!r.finish) S.voice.say(spokenGap(S.gap.state().value ?? 0));
+    }
+  }
+  // finish
+  const total = S.course ? S.course.total : null;
+  if (!r.finish && total && d !== null && d >= total - 0.5 && el > 60) finishRun(now, el, d, est);
+  renderRunPanel(now, el, d, est);
+  if (S.mapReady) renderRunMap(now, el, d, est, dt);
+}
+
+// When did you actually cross the start line? LIVE switches to it (chip time); after a
+// START tap it is offered in the run menu if it differs by more than a few seconds.
+function detectCrossing(now, el) {
+  const r = S.run;
+  if (el > 40 * 60 || (r.mode === 'live' && (r.t0Source !== 'gun' || r.noAutoChip))) return;
+  if (r.mode === 'live') {
+    const c = S.tracker.crossingOf(0, r.gunMs - 30000);
+    if (c && c <= r.gunMs + 25 * 60000) {
+      r.crossing = c;
+      setT0(c, 'chip', `Chip time: you crossed the start line at ${fmtTimeOfDay(c, true)}.`);
+    }
+    return;
+  }
+  const all = S.tracker.crossingsOf(0, r.t0 - 5 * 60000).filter((c) => c <= r.t0 + 20 * 60000);
+  if (!all.length) return;
+  const best = all.reduce((a, b) => (Math.abs(b - r.t0) < Math.abs(a - r.t0) ? b : a));
+  if (best === r.crossing) return;
+  r.crossing = best;
+  saveRunState();
+  if (Math.abs(best - r.t0) > 8000 && r.t0Source === 'tap') S.crossHintUntil = clock.now() + 3 * 60000;
+}
+
+function finishRun(now, el, d, est) {
+  const r = S.run;
+  const v = est && est.v > 0.5 ? est.v : 3.9;
+  const tFin = now - ((d - S.course.total) / v) * 1000;
+  const elapsed = (tFin - r.t0) / 1000;
+  const gap = S.gap.state().value ?? 0;
+  r.finish = { t: tFin, elapsed, gap };
+  saveRunState();
+  if (S.track) S.track.flush();
+  $('#fin-time').textContent = fmtClock(elapsed);
+  $('#fin-gap').textContent = Math.round(gap) === 0 ? 'Exactly on the ghost'
+    : `${fmtGap(gap)} s ${gap > 0 ? 'behind' : 'ahead of'} the ghost`;
+  $('#finish').hidden = false;
+  S.voice.say(`Finish. ${spokenClock(elapsed)}.`);
+}
+
+// ---------------------------------------------------------------- rendering: running
+function renderRunPanel(now, el, d, est) {
+  const r = S.run;
+  const bottom = $('#bottom');
+  let cls, num, word, status = '';
+  const g = S.gap.state();
+  // Show "estimating" only for a real outage (the tunnel, or 6 s without GPS): a missed
+  // fix or two is normal at 1 Hz and should not make the display flicker.
+  const estimating = !!(est && est.mode === 'estimating' && (est.age > 6 || (S.course && S.course.inTunnel(d, 30))));
+  if (el < 0) {
+    cls = 'wait';
+    num = fmtCountdown(-el);
+    word = r.mode === 'live' ? 'TO THE GUN' : 'TO START';
+  } else if (d === null) {
+    cls = 'nolock';
+    num = '—';
+    word = S.free ? 'WAITING FOR GPS' : 'FINDING COURSE';
+  } else {
+    const s = g.shown ?? 0;
+    cls = s > 0 ? 'behind' : s < 0 ? 'ahead' : 'even';
+    num = (estimating ? '~' : '') + fmtGap(s);
+    word = s > 0 ? 'BEHIND' : s < 0 ? 'AHEAD' : 'ON PACE';
+  }
+  // status line
+  const fixAge = S.fix ? (Date.now() - S.fixReal) / 1000 : Infinity;
+  if (el >= 0 && d === null && S.tracker && S.tracker.offCourse) status = `You are ${Math.round(S.tracker.offCourse)} m from the course`;
+  else if (estimating) status = S.course && S.course.inTunnel(d, 30) ? 'TUNNEL · no GPS · estimating' : `No GPS for ${Math.round(est.age)} s · estimating`;
+  else if (fixAge > 8 && !S.sim) status = `No GPS for ${Math.round(fixAge)} s`;
+  else if (S.crossHintUntil > now && r.crossing) {
+    const diff = (r.crossing - r.t0) / 1000;
+    status = `Start line crossed ${Math.abs(diff).toFixed(0)} s ${diff > 0 ? 'after' : 'before'} START · hold ••• to fix`;
+  } else if (el < 0 && r.mode === 'live') status = `Gun at ${fmtTimeOfDay(r.t0, true)} · stay in the corral`;
+  else if (S.fix && S.fix.acc > 25) status = `Weak GPS ±${Math.round(S.fix.acc)} m`;
+  else if (S.needWakeTap) status = 'Tap the screen once to keep it awake';
+  const style = S.settings.panel === 'black' ? ' style-black' : '';
+  const estCls = estimating ? ' est' : '';
+  const full = cls + style + estCls;
+  const P = S.lastPanel;
+  if (P.cls !== full) { bottom.className = full; P.cls = full; }
+  if (P.num !== num) {
+    const numEl = $('#gap-num');
+    if (num.startsWith('~')) numEl.innerHTML = `<span class="tilde">~</span>${escapeHtml(num.slice(1))}`;
+    else numEl.textContent = num;
+    P.num = num;
+    fitGap(num);
+  }
+  if (P.word !== word) { $('#gap-word').textContent = word; P.word = word; }
+  if (P.status !== status) { $('#status-line').textContent = status; P.status = status; }
+  const elapsedTxt = el >= 0 ? fmtClock(el) : '0:00:00';
+  if (P.el !== elapsedTxt) { $('#v-elapsed').textContent = elapsedTxt; P.el = elapsedTxt; }
+  const kmTxt = d !== null ? (Math.max(0, d) / 1000).toFixed(2) : '—';
+  if (P.km !== kmTxt) { $('#v-km').textContent = kmTxt; P.km = kmTxt; }
+  let pace = '—';
+  if (S.free) pace = fmtPace(r.free.pace);
+  else if (S.plan && d !== null) pace = fmtPace(S.plan.paceAt(Math.max(0, Math.min(S.course.total, d))));
+  else if (S.plan) pace = fmtPace(S.plan.paceAt(50));
+  if (P.pace !== pace) { $('#v-pace').textContent = pace; P.pace = pace; }
+  renderBadges(el, g);
+}
+
+function fitGap(text) {
+  const el = $('#gap-num');
+  const wrap = $('#gap-wrap');
+  const H = wrap.clientHeight, W = wrap.clientWidth;
+  if (!H || !W) return;
+  let size = (H / 0.78) * 0.97;
+  el.style.fontSize = `${size}px`;
+  const w = el.scrollWidth;
+  const maxW = W * 0.95;
+  if (w > maxW) { size *= maxW / w; el.style.fontSize = `${size}px`; }
+}
+
+function renderBadges(el, g) {
+  const r = S.run;
+  const parts = [];
+  if (r.sim) parts.push('<div class="badge">SIM</div>');
+  if (r.kind === 'race') {
+    const mode = r.mode === 'live' ? (r.t0Source === 'chip' ? 'LIVE · CHIP' : 'LIVE · GUN') : r.t0Source === 'adjusted' ? 'START · ADJUSTED' : 'START';
+    parts.push(`<div class="badge">${mode}</div>`);
+    if (el > 0 && g.value !== null && S.plan) {
+      const proj = S.plan.target + g.value;
+      parts.push(`<div class="badge big${proj >= 3 * 3600 ? '' : ' ghost'}">→ ${fmtClock(proj)}</div>`);
+    }
+  } else if (r.kind === 'practice') parts.push(`<div class="badge">PRACTICE · ${fmtPace(r.practice.pace)}</div>`);
+  else if (r.kind === 'free') parts.push(`<div class="badge">FREE RUN · ${fmtPace(r.free.pace)}</div>`);
+  const html = parts.join('');
+  if (S.lastPanel.badges !== html) { $('#badges').innerHTML = html; S.lastPanel.badges = html; }
+}
+
+function renderRunMap(now, el, d, est, dt) {
+  const map = S.map;
+  const r = S.run;
+  if (S.free) {
+    const f = S.free;
+    if (f.pos) {
+      map.setMe(f.pos[0], f.pos[1], { travel: f.bearing });
+      const gd = el > 0 ? (el / r.free.pace) * 1000 : 0;
+      const gp = f.pointAt(gd);
+      map.setGhost(gp ? gp[0] : null, gp ? gp[1] : null);
+      if (!S.lastTrailN || f.trail.length - S.lastTrailN > 3) { map.setTrail(f.trail); S.lastTrailN = f.trail.length; }
+      const target = f.bearing ?? S.cam.bearing;
+      S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 1.5);
+      S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(300), dt, 2);
+      map.follow({ lat: f.pos[0], lon: f.pos[1], bearing: S.cam.bearing, zoom: S.cam.zoom });
+    }
+    return;
+  }
+  const course = S.course;
+  if (d === null) {
+    if (S.fix) {
+      map.setMe(S.fix.lat, S.fix.lon, { heading: S.compass ? S.heading : null });
+      map.follow({ lat: S.fix.lat, lon: S.fix.lon, bearing: S.cam.bearing, zoom: 16, pitch: 40 });
+    }
+    return;
+  }
+  const dc = Math.max(course.line.d0, Math.min(course.total, d));
+  const [la, lo] = course.line.latLonAt(dc);
+  const travel = course.line.bearingAt(dc, 12, 4);
+  map.setProgress(dc);
+  const target = course.line.bearingAt(dc + 20, 35, 5);
+  S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 1.1);
+  S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(course.lookaheadAt(Math.max(0, dc))), dt, 2.5);
+  map.follow({ lat: la, lon: lo, bearing: S.cam.bearing, zoom: S.cam.zoom });
+  map.setMe(la, lo, { travel });
+  if (el > 0 && S.plan) {
+    const gd = S.plan.distAt(el);
+    const [ga, go] = course.line.latLonAt(Math.min(course.total, gd));
+    map.setGhost(ga, go);
+  } else map.setGhost(null, null);
+}
+
+// ---------------------------------------------------------------- rendering: ready
+function renderReady() {
+  const s = S.settings;
+  $('#rt-name').textContent = 'Marathon de Québec · Sun Oct 4';
+  let sub = `Target ${fmtClock(s.target)} · even effort`;
+  if (s.wind.kmh > 0) sub += ` · wind ${dirName(s.wind.fromDeg)} ${s.wind.kmh}`;
+  $('#rt-sub').textContent = sub;
+  renderReadyLive(clock.now());
+}
+
+function renderReadyLive(now) {
+  const g = gunMs();
+  let sub;
+  if (now < g && g - now < 3 * 3600e3) sub = `· gun in ${fmtCountdown((g - now) / 1000)}`;
+  else if (now >= g && now - g < 7 * 3600e3) sub = `· since ${fmtTimeOfDay(g, true)}`;
+  else sub = `· gun ${fmtTimeOfDay(g, true)}`;
+  if (S.lastPanel.liveSub !== sub) { $('#live-sub').textContent = sub; S.lastPanel.liveSub = sub; }
+}
+
+function renderChips() {
+  const chips = [];
+  const fixAge = S.fix ? (Date.now() - S.fixReal) / 1000 : Infinity;
+  if (S.sim) chips.push(chip('ok', 'Simulated GPS'));
+  else if (S.gpsError === 'Location blocked') chips.push(chip('bad', 'Location blocked — see Help'));
+  else if (!S.fix) chips.push(chip('warn', S.gpsError || 'Waiting for GPS…'));
+  else if (fixAge > 20) chips.push(chip('bad', `GPS lost ${Math.round(fixAge)} s`));
+  else {
+    const a = Math.round(S.fix.acc);
+    chips.push(chip(a <= 12 ? 'ok' : a <= 30 ? 'warn' : 'bad', `GPS ±${a} m`));
+  }
+  if (S.phase === 'ready') {
+    if (S.offline === true) chips.push(chip('ok', 'Works offline'));
+    else if (S.offline === false) chips.push(chip('warn', 'Saving for offline…'));
+    if (!S.compass && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      chips.push('<button class="chip tap" data-act="compass">Tap: turn on compass</button>');
+    }
+    if (S.fix && S.course && S.course.id === 'marathon' && fixAge < 60) {
+      const [la, lo] = S.course.line.latLonAt(0);
+      const dist = haversine(S.fix.lat, S.fix.lon, la, lo);
+      if (dist > 150) chips.push(chip('', `Start line ${dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m'} away`));
+    }
+    if (S.updateReady) chips.push('<button class="chip tap" data-act="update">Update ready · tap to reload</button>');
+  } else if (S.phase === 'running' && S.needWakeTap) {
+    chips.push('<button class="chip tap" data-act="wake">Tap: keep screen awake</button>');
+  }
+  const html = chips.join('');
+  if (S.lastPanel.chips !== html) { $('#chips').innerHTML = html; S.lastPanel.chips = html; }
+  if (S.phase === 'ready' && S.lastPanel.badges !== '') { $('#badges').innerHTML = ''; S.lastPanel.badges = ''; }
+}
+
+function chip(kind, text) {
+  return `<div class="chip ${kind}"><span class="dot"></span>${escapeHtml(text)}</div>`;
+}
+
+// ---------------------------------------------------------------- UI bindings
+function bindUi() {
+  $('#btn-start').addEventListener('click', startManual);
+  $('#btn-live').addEventListener('click', startLive);
+  $$('[data-open]').forEach((b) => b.addEventListener('click', () => openSheet(b.dataset.open)));
+  $$('[data-close]').forEach((b) => b.addEventListener('click', closeSheets));
+  $('#scrim').addEventListener('click', () => { if (!$('#sheet-menu').hidden) return; closeSheets(); });
+  $('#chips').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'compass') await enableCompass();
+    if (b.dataset.act === 'wake') { const ok = await S.wake.enable(); S.needWakeTap = !ok; }
+    if (b.dataset.act === 'update') applyUpdate();
+    renderChips();
+  });
+  document.addEventListener('pointerdown', async () => {
+    if (S.needWakeTap && S.phase === 'running') {
+      const ok = await S.wake.enable();
+      if (ok) { S.needWakeTap = false; renderChips(); }
+    }
+  }, { capture: true });
+  $('#btn-recenter').addEventListener('click', () => { S.follow = true; S.overviewShown = false; enableCompass(); });
+  $('#btn-overview').addEventListener('click', () => { S.follow = false; S.map.overview(S.fix ? [S.fix.lat, S.fix.lon] : null); });
+  if (S.mapReady) {
+    S.map.map.on('dragstart', () => { if (S.phase === 'ready') S.follow = false; });
+    S.map.map.on('click', (e) => onMapClick(e.lngLat));
+  }
+  bindLongPress($('#info'), 900, openRunMenu);
+  bindRunMenu();
+  bindSettings();
+  bindPractice();
+  $('#btn-sim-stop').addEventListener('click', () => endSim(true));
+  $('#fin-close').addEventListener('click', () => { $('#finish').hidden = true; });
+  $('#fin-export').addEventListener('click', () => exportGpx(S.run));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      S.lastPanel = {};
+      if (!S.sim && Date.now() - S.fixReal > 5000) startGps();
+    } else if (S.track) S.track.flush();
+  });
+  window.addEventListener('pagehide', () => { if (S.track) S.track.flush(); });
+}
+
+function bindLongPress(el, ms, fn) {
+  let t0 = 0, raf = 0, active = false, sx = 0, sy = 0;
+  const handle = $('#menu-handle');
+  const reset = () => {
+    active = false;
+    cancelAnimationFrame(raf);
+    handle.classList.remove('pressing');
+    handle.style.setProperty('--p', 0);
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (S.phase !== 'running') return;
+    active = true; t0 = performance.now(); sx = e.clientX; sy = e.clientY;
+    handle.classList.add('pressing');
+    const step = () => {
+      if (!active) return;
+      const p = (performance.now() - t0) / ms;
+      handle.style.setProperty('--p', Math.min(1, p));
+      if (p >= 1) { reset(); fn(); return; }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  });
+  el.addEventListener('pointermove', (e) => { if (active && Math.hypot(e.clientX - sx, e.clientY - sy) > 25) reset(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => el.addEventListener(ev, reset));
+}
+
+function bindHold(btn, ms, fn) {
+  let t0 = 0, raf = 0, active = false;
+  const target = btn;
+  const reset = () => { active = false; cancelAnimationFrame(raf); target.style.setProperty('--p', 0); };
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    active = true; t0 = performance.now();
+    try { btn.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    armMenuTimer();
+    const step = () => {
+      if (!active) return;
+      const p = (performance.now() - t0) / ms;
+      target.style.setProperty('--p', Math.min(1, p));
+      if (p >= 1) { reset(); fn(); return; }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  });
+  ['pointerup', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, reset));
+  btn.addEventListener('click', (e) => e.preventDefault());
+}
+
+// ---------------------------------------------------------------- sheets
+function openSheet(name) {
+  closeSheets();
+  const el = $(`#sheet-${name}`);
+  if (!el) return;
+  if (name === 'settings') renderSettings();
+  if (name === 'plan') renderPlan();
+  if (name === 'help') $('#help-body').innerHTML = helpHtml(VERSION);
+  if (name === 'practice') openPractice();
+  $('#scrim').hidden = false;
+  el.hidden = false;
+}
+
+function closeSheets() {
+  $$('.sheet').forEach((s) => { s.hidden = true; });
+  $('#scrim').hidden = true;
+  clearTimeout(S.menuTimer);
+  if (S.practiceDraft && !S.practiceDraft.picking && S.phase === 'ready') cancelPracticePreview();
+}
+
+// ---- run menu
+let pendingTarget = null;
+
+function openRunMenu() {
+  if (S.phase !== 'running') return;
+  pendingTarget = null;
+  renderRunMenu();
+  $('#scrim').hidden = false;
+  $('#sheet-menu').hidden = false;
+  armMenuTimer();
+}
+
+function armMenuTimer() {
+  clearTimeout(S.menuTimer);
+  S.menuTimer = setTimeout(() => { if (!$('#sheet-menu').hidden) closeSheets(); }, 20000);
+}
+
+function renderRunMenu() {
+  const r = S.run;
+  const src = { tap: 'when you tapped START', gun: 'at the gun', chip: 'when you crossed the start line (chip time)', adjusted: 'adjusted by hand' }[r.t0Source] || r.t0Source;
+  $('#menu-summary').textContent = `Clock started at ${fmtTimeOfDay(r.t0, true)}, ${src}. ` +
+    (r.kind === 'race' ? `Finish target ${fmtClock(S.plan ? S.plan.target : r.target)}.` : '');
+  const sync = [];
+  if (r.kind === 'race') {
+    if (r.crossing && Math.abs(r.crossing - r.t0) > 1000) {
+      sync.push(`<button type="button" class="wide hold primary" data-sync="crossing">Hold: start the clock at your start-line crossing (${fmtTimeOfDay(r.crossing, true)})</button>`);
+    }
+    if (r.t0 !== r.gunMs) sync.push(`<button type="button" class="wide hold" data-sync="gun">Hold: use gun time (${fmtTimeOfDay(r.gunMs, true)})</button>`);
+  }
+  $('#menu-sync').innerHTML = sync.join('');
+  $$('#menu-sync [data-sync]').forEach((b) => bindHold(b, 1000, () => {
+    if (b.dataset.sync === 'crossing') setT0(r.crossing, 'chip', `Clock now starts at your crossing, ${fmtTimeOfDay(r.crossing, true)}.`);
+    else { r.noAutoChip = true; setT0(r.gunMs, 'gun', `Clock now starts at the gun, ${fmtTimeOfDay(r.gunMs, true)}.`); }
+    S.crossHintUntil = 0;
+    renderRunMenu();
+  }));
+  const voice = $('#menu-voice');
+  voice.innerHTML = `<button type="button" data-v="1" class="${S.settings.voice ? 'on' : ''}">On</button><button type="button" data-v="0" class="${S.settings.voice ? '' : 'on'}">Off</button>`;
+  const panel = $('#menu-panel');
+  panel.innerHTML = `<button type="button" data-p="color" class="${S.settings.panel === 'color' ? 'on' : ''}">Colour</button><button type="button" data-p="black" class="${S.settings.panel === 'black' ? 'on' : ''}">Black</button>`;
+  const rt = $('#btn-retarget');
+  if (pendingTarget !== null) {
+    rt.hidden = false;
+    rt.textContent = `Hold: finish in ${fmtClock(pendingTarget)} from here`;
+  } else rt.hidden = true;
+  $('#sheet-menu [data-retarget]')?.closest('.menu-row')?.toggleAttribute('hidden', r.kind === 'free');
+}
+
+function bindRunMenu() {
+  $$('#sheet-menu [data-nudge]').forEach((b) => bindHold(b, 1000, () => {
+    const s = Number(b.dataset.nudge);
+    setT0(S.run.t0 + s * 1000, 'adjusted', `Start moved ${s > 0 ? 'later' : 'earlier'} by ${Math.abs(s)} s.`);
+    renderRunMenu();
+  }));
+  $$('#sheet-menu [data-retarget]').forEach((b) => b.addEventListener('click', () => {
+    armMenuTimer();
+    if (!S.plan) return;
+    const base = pendingTarget ?? S.plan.target;
+    pendingTarget = Math.max(600, base + Number(b.dataset.retarget));
+    renderRunMenu();
+  }));
+  bindHold($('#btn-retarget'), 1000, () => {
+    if (pendingTarget === null || !S.plan) return;
+    const now = clock.now();
+    const el = (now - S.run.t0) / 1000;
+    const est = S.tracker && S.tracker.tracking ? S.tracker.peek(now) : null;
+    if (!est || el <= 0) { toast('Needs a GPS position on the course.'); return; }
+    S.run.replan = { d: est.d, t: el, target: pendingTarget };
+    if (S.run.kind === 'race') S.run.target = S.run.target; // original plan kept for reference
+    S.plan = planFor(S.course, S.run);
+    saveRunState();
+    S.gap.reset();
+    toast(`New plan: finish in ${fmtClock(pendingTarget)}. Gap reset to 0 here.`);
+    pendingTarget = null;
+    renderRunMenu();
+  });
+  $('#menu-voice').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    S.settings.voice = b.dataset.v === '1'; S.voice.enabled = S.settings.voice; saveSettings(S.settings);
+    if (S.settings.voice) S.voice.say('Voice on', { force: true });
+    renderRunMenu(); armMenuTimer();
+  });
+  $('#menu-panel').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    S.settings.panel = b.dataset.p; saveSettings(S.settings); S.lastPanel = {};
+    renderRunMenu(); armMenuTimer();
+  });
+  $('#btn-export').addEventListener('click', () => exportGpx(S.run));
+  bindHold($('#btn-stop'), 5000, () => { closeSheets(); stopRun(); });
+}
+
+// ---- settings
+function bindSettings() {
+  const upd = () => { saveSettings(S.settings); S.readyPlan = planFor(S.marathon, null); if (S.course === S.marathon) S.plan = S.readyPlan; renderSettings(); renderReady(); };
+  $$('#sheet-settings [data-target]').forEach((b) => b.addEventListener('click', () => {
+    S.settings.target = Math.max(2 * 3600, Math.min(6 * 3600, S.settings.target + Number(b.dataset.target))); upd();
+  }));
+  $$('#sheet-settings [data-wind]').forEach((b) => b.addEventListener('click', () => {
+    const v = Number(b.dataset.wind);
+    S.settings.wind.kmh = v === 0 ? 0 : Math.max(0, Math.min(50, S.settings.wind.kmh + v)); upd();
+  }));
+  $('#wind-dirs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dir]'); if (!b) return;
+    S.settings.wind.fromDeg = Number(b.dataset.dir);
+    if (S.settings.wind.kmh === 0) S.settings.wind.kmh = 15;
+    upd();
+  });
+  $$('#sheet-settings [data-aid]').forEach((b) => b.addEventListener('click', () => {
+    S.settings.aidSeconds = Math.max(0, Math.min(15, S.settings.aidSeconds + Number(b.dataset.aid))); upd();
+  }));
+  $$('#sheet-settings [data-gun]').forEach((b) => b.addEventListener('click', () => {
+    const v = Number(b.dataset.gun);
+    S.settings.gunOffset = v === 0 ? 0 : S.settings.gunOffset + v; upd(); renderReadyLive(clock.now());
+  }));
+  $('#set-voice').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    S.settings.voice = b.dataset.v === '1'; S.voice.enabled = S.settings.voice;
+    if (S.settings.voice) { S.voice.unlock(); S.voice.say('3 behind', { force: true }); }
+    upd();
+  });
+  $('#set-panel').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    S.settings.panel = b.dataset.p; upd();
+  });
+  $('#btn-sim').addEventListener('click', () => startSim(20));
+}
+
+const DIRS = [['N', 0], ['NE', 45], ['E', 90], ['SE', 135], ['S', 180], ['SW', 225], ['W', 270], ['NW', 315]];
+function dirName(deg) { return DIRS.reduce((b, d) => (Math.abs(angleDiff(d[1], deg)) < Math.abs(angleDiff(b[1], deg)) ? d : b))[0]; }
+
+function renderSettings() {
+  const s = S.settings;
+  $('#set-target').textContent = fmtClock(s.target);
+  const margin = 3 * 3600 - s.target;
+  $('#set-target-note').textContent = margin > 0
+    ? `${fmtGap(margin)} s of margin under 3:00:00. Flat-ground pace about ${fmtPace(flatPace())} /km.`
+    : 'Over three hours.';
+  $('#set-wind').textContent = s.wind.kmh > 0 ? `From ${dirName(s.wind.fromDeg)} · ${s.wind.kmh} km/h` : 'Still air';
+  $('#wind-dirs').innerHTML = DIRS.map(([n, deg]) =>
+    `<button type="button" data-dir="${deg}" class="${s.wind.kmh > 0 && Math.round(s.wind.fromDeg) === deg ? 'on' : ''}">${n}</button>`).join('');
+  if (s.wind.kmh > 0) {
+    const still = S.marathon.plan({ target: s.target, aidSeconds: s.aidSeconds });
+    const p = S.readyPlan;
+    const seg = (pl, a, b) => pl.timeAt(b) - pl.timeAt(a);
+    const river = seg(p, 25700, 35000) - seg(still, 25700, 35000);
+    const upper = seg(p, 13000, 25000) - seg(still, 13000, 25000);
+    $('#set-wind-note').textContent = `River (km 25.7–35): ${signed(river)} s. Upper town (km 13–25): ${signed(upper)} s. Same finish time.`;
+  } else {
+    $('#set-wind-note').textContent = 'Optional, on race morning: the forecast direction the wind comes FROM and its speed. The ghost eases into headwinds and speeds up with tailwinds, weighted by how exposed each stretch is. Same finish time.';
+  }
+  $('#set-aid').textContent = `${s.aidSeconds} s`;
+  $('#set-voice').innerHTML = `<button type="button" data-v="1" class="${s.voice ? 'on' : ''}">On</button><button type="button" data-v="0" class="${s.voice ? '' : 'on'}">Off</button>`;
+  $('#set-panel').innerHTML = `<button type="button" data-p="color" class="${s.panel === 'color' ? 'on' : ''}">Colour panel</button><button type="button" data-p="black" class="${s.panel === 'black' ? 'on' : ''}">Black + colour digits</button>`;
+  $('#set-gun').textContent = fmtTimeOfDay(gunMs(), true);
+  $('#about').textContent = `Version ${VERSION}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles.`;
+}
+
+function flatPace() {
+  const p = S.readyPlan;
+  // pace of the flattest kilometres (median of splits)
+  const splits = [];
+  for (let k = 1; k <= 42; k++) splits.push(p.split(k));
+  splits.sort((a, b) => a - b);
+  return splits[Math.floor(splits.length * 0.4)];
+}
+
+function renderPlan() {
+  const p = S.readyPlan;
+  const c = S.marathon;
+  const gun = gunMs();
+  const rows = [];
+  const flat = flatPace();
+  for (let k = 1; k <= 43; k++) {
+    const a = (k - 1) * 1000, b = Math.min(k * 1000, c.total);
+    if (a >= c.total) break;
+    const split = p.timeAt(b) - p.timeAt(a);
+    const per = split / ((b - a) / 1000);
+    const up = c.elevationAt(b) - c.elevationAt(a);
+    const notes = [];
+    for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`💧${aid.km}`);
+    for (const [ta, tb] of c.tunnels) if (tb - ta > 300 && ta < b && tb > a) notes.push('tunnel');
+    const cls = per > flat + 12 ? 'climb' : per < flat - 8 ? 'down' : '';
+    rows.push(`<tr class="${cls}"><td>${b === c.total ? '42.2' : k}</td><td class="pace">${fmtPace(split)}</td>` +
+      `<td>${fmtClock(p.timeAt(b))}</td><td>${fmtTimeOfDay(gun + p.timeAt(b) * 1000)}</td>` +
+      `<td class="elev">${Math.round(up) > 0 ? '+' : Math.round(up) < 0 ? '−' : ''}${Math.abs(Math.round(up))}</td><td class="note">${notes.join(' · ')}</td></tr>`);
+  }
+  $('#plan-body').innerHTML =
+    `<p class="muted small">Even effort for ${fmtClock(S.settings.target)}${S.settings.wind.kmh ? `, wind from ${dirName(S.settings.wind.fromDeg)} ${S.settings.wind.kmh} km/h` : ''}. ` +
+    `The ghost follows this to the metre; you only watch the number. Times of day assume the gun at ${fmtTimeOfDay(gun, true)}.</p>` +
+    `<table class="splits"><thead><tr><th>km</th><th>split</th><th>clock</th><th>time</th><th>m</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+// ---- practice
+function bindPractice() {
+  $('#pr-dkn').addEventListener('click', () => { S.practiceDraft.dest = { ...S.dest, label: 'Pavillon Charles-De Koninck (DKN)' }; buildPracticeRoute(); });
+  $('#pr-pick').addEventListener('click', () => {
+    S.practiceDraft.picking = true;
+    $$('.sheet').forEach((s) => { s.hidden = true; });
+    $('#scrim').hidden = true;
+    S.follow = false;
+    toast('Tap your destination on the map', 4000);
+  });
+  $('#pr-return').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ret]'); if (!b) return;
+    S.settings.practiceReturn = b.dataset.ret === '1'; saveSettings(S.settings); buildPracticeRoute();
+  });
+  $$('#sheet-practice [data-ppace]').forEach((b) => b.addEventListener('click', () => {
+    S.settings.practicePace = Math.max(180, Math.min(480, S.settings.practicePace + Number(b.dataset.ppace)));
+    saveSettings(S.settings); buildPracticeRoute();
+  }));
+  $('#pr-start').addEventListener('click', () => {
+    const dr = S.practiceDraft;
+    if (!dr || !dr.spec) return;
+    const pace = S.settings.practicePace;
+    const spec = dr.spec;
+    S.practiceDraft = null;
+    beginRun(newRun('practice', 'manual', { target: (spec.distance / 1000) * pace, practice: { spec, pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0 }));
+  });
+  $('#pr-free').addEventListener('click', () => {
+    const pace = S.settings.practicePace;
+    S.practiceDraft = null;
+    beginRun(newRun('free', 'manual', { target: 0, free: { pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0 }));
+  });
+}
+
+async function openPractice() {
+  if (!S.practiceDraft) S.practiceDraft = { dest: null, spec: null, picking: false, waiting: false };
+  renderPracticeStatic();
+  $('#pr-info').textContent = 'Loading the street map…';
+  $('#pr-start').disabled = true;
+  try {
+    if (!S.graph) {
+      const [g, d, dest] = await Promise.all([
+        fetch('data/practice-graph.bin').then((r) => r.arrayBuffer()),
+        fetch('data/practice-dem.bin').then((r) => r.arrayBuffer()),
+        fetch('data/practice-dest.json').then((r) => r.json()),
+      ]);
+      S.graph = new Graph(g);
+      S.dem = new Dem(d);
+      S.dest = dest;
+    }
+  } catch (e) {
+    $('#pr-info').textContent = 'Could not load the practice map. Use Free run.';
+    return;
+  }
+  if (!S.practiceDraft.dest) S.practiceDraft.dest = { ...S.dest, label: 'Pavillon Charles-De Koninck (DKN)' };
+  buildPracticeRoute();
+}
+
+function renderPracticeStatic() {
+  const s = S.settings;
+  $('#pr-pace').textContent = `${fmtPace(s.practicePace)} /km`;
+  $('#pr-return').innerHTML = `<button type="button" data-ret="1" class="${s.practiceReturn ? 'on' : ''}">There and back</button><button type="button" data-ret="0" class="${s.practiceReturn ? '' : 'on'}">One way</button>`;
+  const dr = S.practiceDraft;
+  $('#pr-dest').textContent = dr && dr.dest ? dr.dest.label : 'Pavillon Charles-De Koninck (DKN)';
+}
+
+function buildPracticeRoute() {
+  const dr = S.practiceDraft;
+  if (!dr || !S.graph) return;
+  renderPracticeStatic();
+  const info = $('#pr-info');
+  const startBtn = $('#pr-start');
+  startBtn.disabled = true;
+  if (!S.fix || Date.now() - S.fixReal > 60000) {
+    dr.waiting = true;
+    info.textContent = 'Waiting for your GPS position… (go outside, allow location)';
+    return;
+  }
+  dr.waiting = false;
+  const route = S.graph.route(S.fix.lat, S.fix.lon, dr.dest.lat, dr.dest.lon);
+  if (!route) {
+    info.textContent = 'No route from here: you may be outside the Québec City practice map. Use Free run.';
+    dr.spec = null;
+    return;
+  }
+  const spec = practiceSpec(route, S.dem, { name: `Practice to ${dr.dest.label}`, outAndBack: S.settings.practiceReturn });
+  dr.spec = spec;
+  const pace = S.settings.practicePace;
+  const km = spec.distance / 1000;
+  const climb = spec.profile.ele.reduce((acc, v, i, a) => acc + (i && v > a[i - 1] ? v - a[i - 1] : 0), 0);
+  info.innerHTML = `<b>${km.toFixed(2)} km</b> ${S.settings.practiceReturn ? 'there and back' : 'one way'} · ghost ${fmtClock(km * pace)} at ${fmtPace(pace)} /km average · ${Math.round(climb)} m of climbing. The ghost uses even effort on the hills, like race day.`;
+  startBtn.disabled = false;
+  const course = new Course(spec);
+  useCourse(course, course.plan({ target: km * pace }));
+  S.follow = true;
+  if (S.mapReady) S.map.overview([S.fix.lat, S.fix.lon]);
+  S.overviewShown = true;
+}
+
+function cancelPracticePreview() {
+  S.practiceDraft = null;
+  useCourse(S.marathon, S.readyPlan);
+}
+
+function onMapClick(lngLat) {
+  const dr = S.practiceDraft;
+  if (!dr || !dr.picking) return;
+  dr.picking = false;
+  dr.dest = { lat: lngLat.lat, lon: lngLat.lng, label: 'Point on the map' };
+  $('#scrim').hidden = false;
+  $('#sheet-practice').hidden = false;
+  buildPracticeRoute();
+}
+
+// ---------------------------------------------------------------- simulation
+function startSim(speed, opts = {}) {
+  closeSheets();
+  const spec = opts.practiceSpec || null;
+  const course = spec ? new Course(spec) : S.marathon;
+  const pace = S.settings.practicePace;
+  const target = spec ? (spec.distance / 1000) * pace : S.settings.target;
+  const plan = spec ? course.plan({ target }) : planFor(course, null);
+  const realStart = Date.now();
+  const virtStart = spec ? realStart : gunMs() - 20000; // race: 20 s before the gun
+  const crossAt = virtStart + (spec ? 3000 : 26000);
+  S.sim = {
+    speed, realStart, virtStart,
+    gen: simulate(course, plan, {
+      startMs: crossAt, preStartS: spec ? 3 : 45, seed: opts.seed ?? 1 + Math.floor(Math.random() * 1000),
+      bias: opts.bias ?? 0.002, wobble: 0.02, outlierRate: 0.01,
+    }),
+    next: null,
+  };
+  clock.now = () => S.sim.virtStart + (Date.now() - S.sim.realStart) * S.sim.speed;
+  $('#sim-banner').hidden = false;
+  $('#sim-speed').textContent = `${speed}×`;
+  S.practiceDraft = null;
+  if (spec) {
+    beginRun(newRun('practice', 'manual', {
+      t0: crossAt, target, practice: { spec, pace }, wind: { fromDeg: 0, kmh: 0 }, aidSeconds: 0,
+    }));
+  } else beginRun(newRun('race', 'live'));
+}
+
+function feedSim(now) {
+  const sim = S.sim;
+  for (let i = 0; i < 200; i++) {
+    if (!sim.next) {
+      const n = sim.gen.next();
+      if (n.done) { sim.next = null; return; }
+      sim.next = n.value;
+    }
+    if (sim.next.tMs > now) return;
+    if (sim.next.fix) { S.fixReal = Date.now(); handleFix(sim.next.fix); }
+    sim.next = null;
+  }
+}
+
+function endSim(stop) {
+  if (!S.sim) return;
+  S.sim = null;
+  clock.now = () => Date.now();
+  $('#sim-banner').hidden = true;
+  S.fix = null;
+  if (stop && S.run) stopRun();
+  startGps();
+}
+
+// ---------------------------------------------------------------- export
+async function exportGpx(run) {
+  if (!run) return;
+  if (S.track) S.track.flush();
+  const pts = TrackLog.load(run.id);
+  if (!pts.length) { toast('No GPS points recorded for this run yet.'); return; }
+  const name = run.kind === 'race' ? 'Marathon Beneva de Québec 2026' : 'Pacer practice';
+  const gpx = toGpx(pts, name);
+  const fname = `${name.replace(/[^A-Za-z0-9]+/g, '-')}-${new Date(run.created).toISOString().slice(0, 10)}.gpx`;
+  const file = new File([gpx], fname, { type: 'application/gpx+xml' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 20000);
+}
+
+// ---------------------------------------------------------------- service worker
+function registerSW() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const check = () => {
+      if (reg.waiting && navigator.serviceWorker.controller) { S.updateReady = true; renderChips(); }
+    };
+    check();
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      if (w) w.addEventListener('statechange', check);
+    });
+    setTimeout(() => reg.update().catch(() => {}), 4000);
+  }).catch(() => { S.offline = false; });
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'status') { S.offline = !!e.data.complete; renderChips(); }
+  });
+  navigator.serviceWorker.ready.then((reg) => {
+    const ask = () => reg.active && reg.active.postMessage({ type: 'status' });
+    ask();
+    setTimeout(ask, 3000);
+    setTimeout(ask, 15000);
+  });
+}
+
+function applyUpdate() {
+  if (S.phase === 'running') { toast('Finish or stop the run first.'); return; }
+  navigator.serviceWorker.getRegistration().then((reg) => {
+    if (reg && reg.waiting) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+      reg.waiting.postMessage({ type: 'skipWaiting' });
+    } else location.reload();
+  });
+}
+
+// ---------------------------------------------------------------- helpers
+function smooth(cur, target, dt, tau) { return cur + (target - cur) * (1 - Math.exp(-dt / tau)); }
+function smoothAngle(cur, target, dt, tau) { return (cur + angleDiff(cur, target) * (1 - Math.exp(-dt / tau)) + 360) % 360; }
+function signed(s) { const r = Math.round(s); return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${Math.abs(r)}`; }
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+
+function fmtCountdown(sec) {
+  const s = Math.ceil(sec);
+  if (s >= 3600) return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function fmtTimeOfDay(ms, seconds = false) {
+  const d = new Date(ms);
+  let h, m, sec;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Toronto', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(d);
+    const g = (t) => Number(parts.find((p) => p.type === t).value);
+    h = g('hour'); m = g('minute'); sec = g('second');
+  } catch {
+    h = d.getHours(); m = d.getMinutes(); sec = d.getSeconds();
+  }
+  const mm = String(m).padStart(2, '0');
+  return seconds ? `${h}:${mm}:${String(sec).padStart(2, '0')}` : `${h}:${mm}`;
+}
+
+function spokenClock(sec) {
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return `${h ? `${h} hour${h > 1 ? 's' : ''} ` : ''}${m} minute${m === 1 ? '' : 's'} ${r} second${r === 1 ? '' : 's'}`;
+}
+
+let toastTimer = null;
+function toast(msg, ms = 3000) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+}
+
+// test hook (used by the automated browser tests)
+window.__pacer = { S, clock, handleFix, startSim, stopRun, openSheet };
+
+boot();
