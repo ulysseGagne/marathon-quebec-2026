@@ -40,6 +40,11 @@
     <button id="btn-overview" class="map-btn map-btn-2" type="button" hidden aria-label="Whole course">
       <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <!-- the unlocked map (hold it 5 s on the run): closes like the run settings -->
+    <div id="map-head" hidden>
+      <div class="mh-title"><b>Map</b><span>drag · pinch</span></div>
+      <button id="map-close" class="x" type="button">Close</button>
+    </div>
     <div id="sim-banner" hidden>SIMULATION · <span id="sim-speed"></span> · <button id="btn-sim-stop" type="button">stop</button></div>
   </section>
 

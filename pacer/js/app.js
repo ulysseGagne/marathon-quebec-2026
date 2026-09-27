@@ -47,6 +47,7 @@ const S = {
   hiddenAt: 0,
   peekUntil: 0,          // pocket mode: screen shown until then (ms)
   freeMap: false,        // the map unlocked (5 s hold on it): no following, flat, draggable
+  freeMapIdleMs: 30000,  // ...until this long without a touch on it
   offNow: null,          // {r} while clearly off the course
   offline: null, updateReady: false,
   graph: null, dem: null, places: null,
@@ -192,7 +193,7 @@ function enterPhase(p) {
   app.classList.remove('phase-boot', 'phase-ready', 'phase-running');
   app.classList.add(`phase-${p}`);
   closeSheets();
-  S.freeMap = false;
+  exitFreeMap();
   S.offNow = null;
   if (S.mapReady) S.map.setInteractive(p === 'ready');
   $('#btn-recenter').hidden = p !== 'ready';
@@ -690,8 +691,9 @@ function runningFrame(now, dt) {
   const pocket = pocketOn();
   if (S.lastPanel.pocket !== pocket) {
     $('#pocket').hidden = !pocket;
-    // black again: close the run settings, so a touch in the pocket cannot land on them
-    if (pocket) { closeSheets(); renderPocket(); }
+    // black again: close the run settings and lock the map again, so a touch in the
+    // pocket cannot land on them
+    if (pocket) { closeSheets(); exitFreeMap(); renderPocket(); }
     S.lastPanel = { pocket };
   }
   if (pocket) return;
@@ -1217,9 +1219,12 @@ function bindUi() {
     }
   }, { capture: true });
   $('#btn-recenter').addEventListener('click', () => {
-    if (S.phase === 'running') { exitFreeMap(); return; }
+    if (S.phase === 'running') { centerFreeMapOnMe(); return; }
     S.follow = true; S.overviewShown = false; enableCompass();
   });
+  $('#map-close').addEventListener('click', exitFreeMap);
+  // using the unlocked map keeps it open
+  ['pointerdown', 'wheel'].forEach((ev) => $('#top').addEventListener(ev, () => { if (S.freeMap) armFreeMapTimer(); }, { passive: true }));
   $('#btn-overview').addEventListener('click', () => { S.follow = false; S.map.overview(S.fix ? [S.fix.lat, S.fix.lon] : null); });
   if (S.mapReady) {
     S.map.map.on('dragstart', () => { if (S.phase === 'ready') S.follow = false; });
@@ -1326,24 +1331,44 @@ function keepLit(ms) {
 // ---- the free map: after the 5 s hold on the map, it stops following you, lies flat and
 // north up, and can be dragged and pinched; your position is the GPS's own. ◎ follows you
 // again.
+// It closes like the run settings: "Close" at the top right, by itself after a while
+// untouched, and when the screen goes black in pocket mode. ◎ centres it on you.
 function enterFreeMap() {
   if (S.phase !== 'running' || S.freeMap || !S.mapReady) return;
   S.freeMap = true;
   S.map.setInteractive(true);
   S.map.flat(S.fix ? [S.fix.lat, S.fix.lon] : null, 16);
+  $('#app').classList.add('free-map');
+  $('#map-head').hidden = false;
   $('#btn-recenter').hidden = false;
   $('#btn-overview').hidden = !S.course;
   updateCompass();
-  toast('Map unlocked: drag it, pinch it. ◎ follows you again.', 4000);
+  armFreeMapTimer();
 }
 
 function exitFreeMap() {
+  clearTimeout(S.freeMapTimer);
   if (!S.freeMap) return;
   S.freeMap = false;
   if (S.mapReady) { S.map.setInteractive(S.phase === 'ready'); S.map.cam = null; }
+  $('#app').classList.remove('free-map');
+  $('#map-head').hidden = true;
   $('#btn-recenter').hidden = S.phase !== 'ready';
   $('#btn-overview').hidden = S.phase !== 'ready';
   updateCompass();
+}
+
+// back to following you after freeMapIdleMs without a touch on the map
+function armFreeMapTimer() {
+  if (!S.freeMap) return;
+  keepLit(12000);
+  clearTimeout(S.freeMapTimer);
+  S.freeMapTimer = setTimeout(exitFreeMap, S.freeMapIdleMs);
+}
+
+function centerFreeMapOnMe() {
+  armFreeMapTimer();
+  if (S.fix && S.mapReady) S.map.map.easeTo({ center: [S.fix.lon, S.fix.lat], duration: 300 });
 }
 
 // A button that acts only after being held still for `ms`. A finger that moves is

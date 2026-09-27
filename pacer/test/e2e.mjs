@@ -451,7 +451,7 @@ await p2.screenshot({ path: join(out, '24b-practice-sheet.png') });
 await p2.evaluate(() => {
   const v = window.__pacer.S.voice; const say = v.say.bind(v);
   window.__spoken = []; v.say = (t, o) => { window.__spoken.push(t); say(t, o); };
-  window.__pacer.startSim(10, { practiceSpec: window.__pacer.S.practiceDraft.spec, live: true, seed: 11 });
+  window.__pacer.startSim(6, { practiceSpec: window.__pacer.S.practiceDraft.spec, live: true, seed: 11 });
 });
 await sleep(400);
 await p2.screenshot({ path: join(out, '25-rehearsal-countdown.png') });
@@ -497,7 +497,7 @@ await sleep(500);
   await p2.screenshot({ path: join(out, '26b-map-holding.png') });
   await sleep(3800); await p2.mouse.up();
   await sleep(900);
-  const fm = await p2.evaluate(() => { const { S } = window.__pacer; const m = S.map.map; return { free: S.freeMap, pitch: m.getPitch(), bearing: m.getBearing(), drag: m.dragPan.isEnabled(), recenter: !document.querySelector('#btn-recenter').hidden }; });
+  const fm = await p2.evaluate(() => { const { S } = window.__pacer; const m = S.map.map; return { free: S.freeMap, pitch: m.getPitch(), bearing: m.getBearing(), drag: m.dragPan.isEnabled(), recenter: !document.querySelector('#btn-recenter').hidden, head: !document.querySelector('#map-head').hidden && document.querySelector('#map-close').textContent, chips: getComputedStyle(document.querySelector('#chips')).visibility }; });
   const c0 = await p2.evaluate(() => window.__pacer.S.map.map.getCenter());
   await p2.mouse.move(mb.x + mb.width / 2, mb.y + mb.height * 0.5);
   await p2.mouse.down();
@@ -509,12 +509,39 @@ await sleep(500);
   await p2.screenshot({ path: join(out, '26c-free-map.png') });
   console.log('map hold:', JSON.stringify(mh), '| free map:', JSON.stringify(fm), '| dragged', moved.toFixed(0), 'm and it stayed');
   if (!mh.shown || mh.title !== 'Map' || mh.n !== '4') errors.push(`map hold fill: ${JSON.stringify(mh)}`);
-  if (!fm.free || fm.pitch > 1 || Math.abs(fm.bearing) > 1 || !fm.drag || !fm.recenter || moved < 10) errors.push(`free map: ${JSON.stringify(fm)} moved ${moved}`);
+  if (!fm.free || fm.pitch > 1 || Math.abs(fm.bearing) > 1 || !fm.drag || !fm.recenter || fm.head !== 'Close' || fm.chips !== 'hidden' || moved < 10) errors.push(`free map: ${JSON.stringify(fm)} moved ${moved}`);
+  // ◎ puts you back in the middle, still unlocked
   await p2.click('#btn-recenter');
+  await sleep(800);
+  const centred = await p2.evaluate(() => { const { S } = window.__pacer; const c = S.map.map.getCenter(); return { free: S.freeMap, off: Math.hypot((c.lat - S.fix.lat) * 111320, (c.lng - S.fix.lon) * 76000) }; });
+  if (!centred.free || centred.off > 40) errors.push(`◎ on the free map: ${JSON.stringify(centred)}`);
+  // "Close", like the run settings: following again, tilted, locked
+  await p2.click('#map-close');
   await sleep(1500);
-  const back = await p2.evaluate(() => { const { S } = window.__pacer; return { free: S.freeMap, pitch: S.map.map.getPitch(), drag: S.map.map.dragPan.isEnabled(), recenter: !document.querySelector('#btn-recenter').hidden }; });
-  console.log('◎ again:', JSON.stringify(back));
-  if (back.free || back.pitch < 30 || back.drag || back.recenter) errors.push(`follow again: ${JSON.stringify(back)}`);
+  const back = await p2.evaluate(() => { const { S } = window.__pacer; return { free: S.freeMap, pitch: S.map.map.getPitch(), drag: S.map.map.dragPan.isEnabled(), recenter: !document.querySelector('#btn-recenter').hidden, head: !document.querySelector('#map-head').hidden, chips: getComputedStyle(document.querySelector('#chips')).visibility }; });
+  console.log('◎ centres:', JSON.stringify(centred), '| Close:', JSON.stringify(back));
+  if (back.free || back.pitch < 30 || back.drag || back.recenter || back.head || back.chips !== 'visible') errors.push(`Close on the free map: ${JSON.stringify(back)}`);
+  // ... and by itself after a while untouched (30 s; 1.5 s here), and when pocket mode goes
+  // black
+  const holdMap = async () => {
+    await p2.mouse.move(mb.x + mb.width / 2, mb.y + mb.height * 0.4);
+    await p2.mouse.down(); await sleep(5300); await p2.mouse.up();
+    await sleep(500);
+    return p2.evaluate(() => window.__pacer.S.freeMap);
+  };
+  await p2.evaluate(() => { window.__pacer.S.freeMapIdleMs = 1500; });
+  const idle1 = await holdMap();
+  await sleep(2000);
+  const idle2 = await p2.evaluate(() => window.__pacer.S.freeMap);
+  await p2.evaluate(() => { window.__pacer.S.freeMapIdleMs = 30000; });
+  const pk1 = await holdMap();
+  await p2.evaluate(() => { const { S } = window.__pacer; S.settings.pocket = true; S.peekUntil = 0; S.lastPanel = {}; });
+  await sleep(900);
+  const pk2 = await p2.evaluate(() => ({ free: window.__pacer.S.freeMap, pocket: !document.querySelector('#pocket').hidden }));
+  await p2.evaluate(() => { const { S } = window.__pacer; S.settings.pocket = false; S.lastPanel = {}; });
+  await sleep(500);
+  console.log('free map closes by itself:', idle1, '→', idle2, '| when pocket goes black:', pk1, '→', JSON.stringify(pk2));
+  if (!idle1 || idle2 || !pk1 || pk2.free || !pk2.pocket) errors.push('free map: idle / pocket close');
 }
 // ending the run: open the run settings (5 s), then hold "End run" 10 s; a red fill covers
 // the screen; 4.5 s is not enough

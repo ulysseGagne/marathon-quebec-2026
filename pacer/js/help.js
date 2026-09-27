@@ -46,7 +46,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 <p>Every change in the run settings needs a 1-second hold. If the page reloads, crashes or gets swiped away, open it again: the run continues from the saved start time.</p>
 
 <h3>Lost? Unlock the map</h3>
-<p>Hold the map 5 seconds: it stops following you, lies flat with north up, and you can drag and pinch it to find your way; you are where the GPS says. The ◎ button (bottom right of the map) follows you again.</p>
+<p>Hold the map 5 seconds: it stops following you, lies flat with north up, and you can drag and pinch it to find your way; you are where the GPS says. The ◎ button (bottom right of the map) puts you back in the middle. It locks again like the run settings close: <b>Close</b> at the top right, or by itself after 30 seconds untouched, or when pocket mode goes black.</p>
 
 <h3>Off course</h3>
 <p>When you are clearly off the course (a wrong turn), the voice says “<b>Off course: 90 meters from the course</b>” (again past 100 m, 200 m, 500 m, 1 km), the number shows how far (“90 m”, OFF COURSE), and the map shows where the GPS has you, flat, with the course in view. There is no gap until you are back on it; then “<b>Back on course</b>”, and the gap is measured from where you rejoined. It only counts once you are more than 40 m from every part of the course (and well beyond the GPS's own error) for 12 seconds straight, and never around the tunnels: in the city a GPS point can land 20 to 50 m off for a few seconds, and that is not you. In simulated races with tunnels, stray points and a poorer GPS it never went off.</p>
