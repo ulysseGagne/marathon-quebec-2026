@@ -460,7 +460,11 @@ function renderRunPanel(now, el, d, est) {
   // Show "estimating" only for a real outage (the tunnel, or 6 s without GPS): a missed
   // fix or two is normal at 1 Hz and should not make the display flicker.
   const estimating = !!(est && est.mode === 'estimating' && (est.age > 6 || (S.course && S.course.inTunnel(d, 30))));
-  if (el < 0) {
+  if (r.finish) {
+    cls = 'even';
+    num = fmtClock(r.finish.elapsed);
+    word = 'FINISHED';
+  } else if (el < 0) {
     cls = 'wait';
     num = fmtCountdown(-el);
     word = r.mode === 'live' ? 'TO THE GUN' : 'TO START';
@@ -499,7 +503,7 @@ function renderRunPanel(now, el, d, est) {
   }
   if (P.word !== word) { $('#gap-word').textContent = word; P.word = word; }
   if (P.status !== status) { $('#status-line').textContent = status; P.status = status; }
-  const elapsedTxt = el >= 0 ? fmtClock(el) : '0:00:00';
+  const elapsedTxt = r.finish ? fmtClock(r.finish.elapsed) : el >= 0 ? fmtClock(el) : '0:00:00';
   if (P.el !== elapsedTxt) { $('#v-elapsed').textContent = elapsedTxt; P.el = elapsedTxt; }
   const kmTxt = d !== null ? (Math.max(0, d) / 1000).toFixed(2) : '—';
   if (P.km !== kmTxt) { $('#v-km').textContent = kmTxt; P.km = kmTxt; }
@@ -816,7 +820,6 @@ function bindRunMenu() {
     const est = S.tracker && S.tracker.tracking ? S.tracker.peek(now) : null;
     if (!est || el <= 0) { toast('Needs a GPS position on the course.'); return; }
     S.run.replan = { d: est.d, t: el, target: pendingTarget };
-    if (S.run.kind === 'race') S.run.target = S.run.target; // original plan kept for reference
     S.plan = planFor(S.course, S.run);
     saveRunState();
     S.gap.reset();
@@ -882,9 +885,10 @@ function renderSettings() {
   const s = S.settings;
   $('#set-target').textContent = fmtClock(s.target);
   const margin = 3 * 3600 - s.target;
+  const marginTxt = margin < 60 ? `${margin} s` : `${Math.floor(margin / 60)} min${margin % 60 ? ` ${margin % 60} s` : ''}`;
   $('#set-target-note').textContent = margin > 0
-    ? `${fmtGap(margin)} s of margin under 3:00:00. Flat-ground pace about ${fmtPace(flatPace())} /km.`
-    : 'Over three hours.';
+    ? `${marginTxt} of margin under 3:00:00. Flat-ground pace about ${fmtPace(flatPace())} /km.`
+    : 'That is not under three hours.';
   $('#set-wind').textContent = s.wind.kmh > 0 ? `From ${dirName(s.wind.fromDeg)} · ${s.wind.kmh} km/h` : 'Still air';
   $('#wind-dirs').innerHTML = DIRS.map(([n, deg]) =>
     `<button type="button" data-dir="${deg}" class="${s.wind.kmh > 0 && Math.round(s.wind.fromDeg) === deg ? 'on' : ''}">${n}</button>`).join('');

@@ -191,6 +191,16 @@ console.log('reload test: t0 kept', after.t0 === t0, 'd before', before.toFixed(
 await p3.screenshot({ path: join(out, '30-resumed.png') });
 if (after.t0 !== t0 || !(Math.abs(after.d - 92) < 25)) errors.push('reload/resume failed');
 
+// ---- works with no network after the first visit
+await ctx3.setOffline(true);
+await p3.reload();
+await p3.waitForSelector('#app.phase-running', { timeout: 60000 });
+await sleep(2500);
+const offlineOk = await p3.evaluate(() => window.__pacer.S.mapReady && !!window.__pacer.S.marathon);
+console.log('offline reload: map', offlineOk);
+await p3.screenshot({ path: join(out, '31-offline.png') });
+if (!offlineOk) errors.push('offline reload failed');
+
 console.log('console errors:', errors.length ? errors : 'none');
 await browser.close();
 server.close();

@@ -85,8 +85,8 @@ button:disabled { opacity: 0.4; }
 }
 #sim-banner button { text-decoration: underline; font-weight: 800; }
 
-.me-marker { width: 100px; height: 100px; pointer-events: none; }
-.ghost-marker { pointer-events: none; }
+.me-marker { width: 100px; height: 100px; pointer-events: none; z-index: 3; }
+.ghost-marker { pointer-events: none; z-index: 2; }
 .ghost-dot {
   width: 24px; height: 24px; border-radius: 50%;
   background: var(--ghost); border: 4px solid #fff;

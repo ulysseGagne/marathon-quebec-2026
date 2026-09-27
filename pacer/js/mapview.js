@@ -187,7 +187,10 @@ export class MapView {
       </svg>`;
     const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'viewport', pitchAlignment: 'viewport' })
       .setLngLat([-71.235, 46.805]);
-    return { el, marker, shown: false };
+    return {
+      el, marker, shown: false,
+      cone: el.querySelector('.cone'), arrow: el.querySelector('.arrow'), dot: el.querySelector('.dot'), last: '',
+    };
   }
 
   _makeGhost() {
@@ -250,13 +253,15 @@ export class MapView {
     me.marker.setLngLat([lon, lat]);
     if (!me.shown) { me.marker.addTo(this.map); me.shown = true; }
     const bearing = this.map.getBearing();
-    const cone = me.el.querySelector('.cone');
-    const arrow = me.el.querySelector('.arrow');
-    const dot = me.el.querySelector('.dot');
-    if (heading === null) cone.style.display = 'none';
-    else { cone.style.display = ''; cone.setAttribute('transform', `rotate(${heading - bearing})`); }
-    if (travel === null) { arrow.style.display = 'none'; dot.style.display = ''; }
-    else { arrow.style.display = ''; dot.style.display = 'none'; arrow.setAttribute('transform', `rotate(${travel - bearing})`); }
+    const coneRot = heading === null ? null : Math.round(heading - bearing);
+    const arrowRot = travel === null ? null : Math.round(travel - bearing);
+    const key = `${coneRot}|${arrowRot}`;
+    if (key === me.last) return;
+    me.last = key;
+    if (coneRot === null) me.cone.style.display = 'none';
+    else { me.cone.style.display = ''; me.cone.setAttribute('transform', `rotate(${coneRot})`); }
+    if (arrowRot === null) { me.arrow.style.display = 'none'; me.dot.style.display = ''; }
+    else { me.arrow.style.display = ''; me.dot.style.display = 'none'; me.arrow.setAttribute('transform', `rotate(${arrowRot})`); }
   }
 
   hideMe() { if (this.me.shown) { this.me.marker.remove(); this.me.shown = false; } }
