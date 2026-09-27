@@ -35,13 +35,13 @@ export class GapDisplay {
 
 const MINUS = '\u2212'; // a real minus sign, as wide as the plus in the number font
 
-// The number on screen: "+7" = 7 s behind the ghost, "−7" = 7 s ahead, "0" = on it.
-// From 100 s on, minutes: "+1:15". (Race-timing convention: + is time you owe.)
+// The number on screen: "+7" = 7 s ahead of the ghost (time in the bank), "−7" = 7 s
+// behind, "0" = on it. From 100 s on, minutes: "−1:15". (sec is the gap: + = behind.)
 export function fmtGap(sec) {
   const r = Math.round(sec);
   const a = Math.abs(r);
   const body = a < 100 ? String(a) : `${Math.floor(a / 60)}:${String(a % 60).padStart(2, '0')}`;
-  return r > 0 ? `+${body}` : r < 0 ? `${MINUS}${body}` : body;
+  return r < 0 ? `+${body}` : r > 0 ? `${MINUS}${body}` : body;
 }
 
 // Words used by the voice: "3 seconds behind", "1 second ahead", "on pace",

@@ -50,23 +50,47 @@ export class Progress {
   }
 }
 
-// Where you planned to eat a bar: a small green bar-shaped label.
-function barPill() {
-  const pr = 2, w = 46, h = 24, r = 7;
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+
+function icon(w, h, draw) {
+  const pr = 2;
   const c = document.createElement('canvas');
   c.width = w * pr; c.height = h * pr;
   const g = c.getContext('2d');
   g.scale(pr, pr);
-  g.beginPath();
-  g.moveTo(1.5 + r, 1.5); g.arcTo(w - 1.5, 1.5, w - 1.5, h - 1.5, r); g.arcTo(w - 1.5, h - 1.5, 1.5, h - 1.5, r);
-  g.arcTo(1.5, h - 1.5, 1.5, 1.5, r); g.arcTo(1.5, 1.5, w - 1.5, 1.5, r); g.closePath();
-  g.fillStyle = '#30D158'; g.fill();
-  g.lineWidth = 2.5; g.strokeStyle = '#000000'; g.stroke();
-  g.fillStyle = '#000000';
-  g.font = '800 13px -apple-system, system-ui, sans-serif';
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('BAR', w / 2, h / 2 + 0.5);
+  draw(g);
   return g.getImageData(0, 0, c.width, c.height);
+}
+
+// Where you planned to eat a bar: a small black label, white outline and text.
+function barPill() {
+  return icon(38, 19, (g) => {
+    roundRect(g, 1, 1, 36, 17, 5);
+    g.fillStyle = '#000000'; g.fill();
+    g.lineWidth = 1.5; g.strokeStyle = '#FFFFFF'; g.stroke();
+    g.fillStyle = '#FFFFFF';
+    g.font = '800 11px -apple-system, system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('BAR', 19, 10);
+  });
+}
+
+// Aid station: a small white drop with a black outline (no colour: they matter less).
+function aidDrop() {
+  return icon(16, 20, (g) => {
+    g.beginPath();
+    g.moveTo(8, 1.5);
+    g.bezierCurveTo(8, 1.5, 14.5, 9, 14.5, 12.5);
+    g.arc(8, 12.5, 6.5, 0, Math.PI);
+    g.bezierCurveTo(1.5, 9, 8, 1.5, 8, 1.5);
+    g.closePath();
+    g.fillStyle = '#FFFFFF'; g.fill();
+    g.lineWidth = 1.6; g.strokeStyle = '#000000'; g.stroke();
+  });
 }
 
 // Clear before fraction f, bright from f on (256 texels per tile: soft, cheap edge).
@@ -143,6 +167,7 @@ export class MapView {
     this.course = null;
     this.ready = false;
     this.theme = themeOf('mono');
+    this.lineColor = this.theme.line; // the bright line and the ghost arrow
     this.prog = null;       // Progress of the course line
     this.front = null;      // fraction currently drawn as the ghost front
     this.trailProg = null;
@@ -177,6 +202,8 @@ export class MapView {
     await new Promise((resolve) => this.map.once('load', resolve));
     this._addCourseLayers();
     this.me = this._makeMe();
+    this.ghost = this._makeGhost();
+    this.ghost.path.style.fill = this.lineColor;
     this.ready = true;
     new ResizeObserver(() => { this.map.resize(); this.calib = null; }).observe(this.container);
   }
@@ -189,6 +216,7 @@ export class MapView {
     m.addSource('trail', { type: 'geojson', data: empty, lineMetrics: true });
     for (const id of ['course-tunnel', 'km', 'aid', 'bars', 'ends']) m.addSource(id, { type: 'geojson', data: empty });
     try { m.addImage('bar-pill', barPill(), { pixelRatio: 2 }); } catch (e) { console.warn('bar icon', e); }
+    try { m.addImage('aid-drop', aidDrop(), { pixelRatio: 2 }); } catch (e) { console.warn('aid icon', e); }
     const round = { 'line-cap': 'round', 'line-join': 'round' };
     // free run: your own trail, bright from the ghost to you
     m.addLayer({ id: 'trail-route', type: 'line', source: 'trail', layout: round, paint: { 'line-color': T.route, 'line-width': THIN } });
@@ -205,12 +233,16 @@ export class MapView {
       },
     });
     m.addLayer({
-      id: 'aid', type: 'circle', source: 'aid', minzoom: 12.5,
-      paint: {
-        'circle-color': T.aid, 'circle-stroke-color': '#000000', 'circle-stroke-width': 2,
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 4, 17, 9],
-        'circle-pitch-alignment': 'viewport',
+      id: 'aid', type: 'symbol', source: 'aid', minzoom: 12.5,
+      layout: {
+        'icon-image': 'aid-drop', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.7, 17, 1.1],
+        'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
+        // what is handed out, when it is more than water and electrolytes
+        'text-field': ['coalesce', ['get', 'what'], ''], 'text-font': ['Open Sans Bold'],
+        'text-size': 12, 'text-anchor': 'left', 'text-offset': [0.9, 0], 'text-optional': true,
       },
+      paint: { 'text-color': '#BDBDBD', 'text-halo-color': '#000000', 'text-halo-width': 1.6 },
     });
     m.addLayer({
       id: 'km-dot', type: 'circle', source: 'km', minzoom: 12.5,
@@ -254,11 +286,12 @@ export class MapView {
 
   setTheme(name) {
     this.theme = themeOf(name);
+    this.lineColor = this.theme.line;
     if (!this.map) return;
+    if (this.ghost) this.ghost.path.style.fill = this.lineColor;
     const m = this.map, T = this.theme;
     m.setPaintProperty('course-route', 'line-color', T.route);
     m.setPaintProperty('trail-route', 'line-color', T.route);
-    m.setPaintProperty('aid', 'circle-color', T.aid);
     m.setPaintProperty('km-dot', 'circle-color', T.kmFill);
     m.setPaintProperty('km-dot', 'circle-stroke-color', T.kmStroke);
     m.setPaintProperty('km-label', 'text-color', T.kmText);
@@ -271,13 +304,13 @@ export class MapView {
     const el = document.createElement('div');
     el.className = 'me-marker';
     el.innerHTML = `
-      <svg viewBox="-50 -50 100 100" width="100" height="100" aria-hidden="true">
-        <g class="cone"><path d="M0 0 L-24 -46 A52 52 0 0 1 24 -46 Z" fill="url(#coneGrad)"/></g>
-        <defs><radialGradient id="coneGrad" cx="0" cy="0" r="52" gradientUnits="userSpaceOnUse">
+      <svg viewBox="-60 -60 120 120" width="120" height="120" aria-hidden="true">
+        <g class="cone"><path d="M0 0 L-28 -56 A62 62 0 0 1 28 -56 Z" fill="url(#coneGrad)"/></g>
+        <defs><radialGradient id="coneGrad" cx="0" cy="0" r="62" gradientUnits="userSpaceOnUse">
           <stop offset="0" class="cone-stop" stop-opacity="0.55"/><stop offset="1" class="cone-stop" stop-opacity="0"/>
         </radialGradient></defs>
-        <g class="arrow"><path class="me-fill" d="M0 -17 L12 13 L0 7 L-12 13 Z" stroke="#000" stroke-width="3" stroke-linejoin="round"/></g>
-        <circle class="dot me-fill" r="9" stroke="#000" stroke-width="3"/>
+        <g class="arrow"><path class="me-fill" d="M0 -32 L24 26 L0 14 L-24 26 Z" stroke="#000" stroke-width="5" stroke-linejoin="round"/></g>
+        <circle class="dot me-fill" r="13" stroke="#000" stroke-width="5"/>
       </svg>`;
     const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'viewport', pitchAlignment: 'viewport' })
       .setLngLat([-71.235, 46.805]);
@@ -285,6 +318,38 @@ export class MapView {
       el, marker, shown: false,
       cone: el.querySelector('.cone'), arrow: el.querySelector('.arrow'), dot: el.querySelector('.dot'), last: '',
     };
+  }
+
+  // The ghost: a white arrow (the line's colour) at the front of the bright line, hiding
+  // where the line starts.
+  _makeGhost() {
+    const el = document.createElement('div');
+    el.className = 'ghost-marker';
+    el.innerHTML = `
+      <svg viewBox="-60 -60 120 120" width="120" height="120" aria-hidden="true">
+        <path class="ghost-fill" d="M0 -27 L20 22 L0 12 L-20 22 Z" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+      </svg>`;
+    const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'viewport', pitchAlignment: 'viewport' })
+      .setLngLat([-71.235, 46.805]);
+    return { el, marker, shown: false, path: el.querySelector('path'), rot: null };
+  }
+
+  setGhost(lat, lon, travel) {
+    const g = this.ghost;
+    if (lat === null) { if (g.shown) { g.marker.remove(); g.shown = false; } return; }
+    g.marker.setLngLat([lon, lat]);
+    if (!g.shown) { g.marker.addTo(this.map); g.shown = true; }
+    const rot = Math.round(travel - this.map.getBearing());
+    if (rot !== g.rot) { g.rot = rot; g.path.setAttribute('transform', `rotate(${rot})`); }
+  }
+
+  // Signal theme: the bright line takes the panel's red or green.
+  setLineColor(color) {
+    if (color === this.lineColor) return;
+    this.lineColor = color;
+    this.ghost.path.style.fill = color;
+    this._drawFront(this.front ?? 0);
+    this._drawTrailFront(this.trailFront ?? 2);
   }
 
   setCourse(course) {
@@ -303,7 +368,7 @@ export class MapView {
     this.map.getSource('km').setData(fc(kms));
     this.map.getSource('aid').setData(fc(course.aid.map((a) => {
       const [la, lo] = line.latLonAt(a.d);
-      return pointFeature(lo, la, { km: a.km });
+      return pointFeature(lo, la, { km: a.km, what: a.what || null });
     })));
     const [sla, slo] = line.latLonAt(0);
     const [fla, flo] = line.latLonAt(course.total);
@@ -344,7 +409,7 @@ export class MapView {
   _drawFront(f) {
     this.front = f;
     const eps = this.prog ? this.prog.eps : 1e-6;
-    this._setGradient('course-live', frontGradient(f, eps, this.theme.line));
+    this._setGradient('course-live', frontGradient(f, eps, this.lineColor));
   }
 
   // Straight onto the style layer rather than map.setPaintProperty(), which would also fire
@@ -388,7 +453,7 @@ export class MapView {
   _drawTrailFront(f) {
     this.trailFront = f;
     const eps = this.trailProg ? this.trailProg.eps : 1e-6;
-    this._setGradient('trail-live', frontGradient(f, eps, this.theme.line));
+    this._setGradient('trail-live', frontGradient(f, eps, this.lineColor));
   }
 
   clearTrail() {

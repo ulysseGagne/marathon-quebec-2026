@@ -7,13 +7,13 @@
 :root {
   --fg: #ffffff;
   --num: #ffffff;
-  --accent: #ff9f0a;
-  --me: #ff9f0a;
+  --accent: #ffd60a;
+  --me: #ffd60a;
   --go-bg: #ffffff;
   --go-fg: #000000;
   --ok: #ffffff;
-  --warn: #ff9f0a;
-  --bad: #ff453a;
+  --warn: #ffd60a;
+  --bad: #ffd60a;
   --behind: #ff2d2d;
   --ahead: #00e676;
   --muted: #9b9b9b;
@@ -106,7 +106,8 @@ button:disabled { opacity: 0.4; }
 }
 #sim-banner button { text-decoration: underline; font-weight: 800; }
 
-.me-marker { width: 100px; height: 100px; pointer-events: none; z-index: 3; }
+.me-marker { width: 120px; height: 120px; pointer-events: none; z-index: 3; }
+.ghost-marker { width: 120px; height: 120px; pointer-events: none; z-index: 2; }
 .me-marker .me-fill { fill: var(--me); }
 .me-marker .cone-stop { stop-color: var(--me); }
 

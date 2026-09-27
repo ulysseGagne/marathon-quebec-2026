@@ -65,14 +65,14 @@ test('replan keeps the past and lands on the new target', () => {
 });
 
 test('gap formatting and speech', () => {
-  // + = behind the ghost, − (a real minus sign) = ahead
-  assert.equal(fmtGap(7.2), '+7');
-  assert.equal(fmtGap(-12.6), '−13');
+  // on screen + = ahead of the ghost (in the bank), − (a real minus sign) = behind
+  assert.equal(fmtGap(7.2), '−7');
+  assert.equal(fmtGap(-12.6), '+13');
   assert.equal(fmtGap(0.3), '0');
   assert.equal(fmtGap(-0.4), '0');
-  assert.equal(fmtGap(75), '+75');
-  assert.equal(fmtGap(135), '+2:15');
-  assert.equal(fmtGap(-100), '−1:40');
+  assert.equal(fmtGap(75), '−75');
+  assert.equal(fmtGap(135), '−2:15');
+  assert.equal(fmtGap(-100), '+1:40');
   assert.equal(spokenGap(3), '3 seconds behind');
   assert.equal(spokenGap(-1), '1 second ahead');
   assert.equal(spokenGap(-10), '10 seconds ahead');

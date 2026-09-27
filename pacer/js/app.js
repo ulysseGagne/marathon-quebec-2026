@@ -12,11 +12,11 @@ import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx
 import { Wake } from './wake.js';
 import { Voice } from './voice.js';
 import { simulate } from './sim.js';
-import { angleDiff, haversine } from './geo.js';
+import { angleDiff, haversine, bearingDeg } from './geo.js';
 import { helpHtml } from './help.js';
 import { THEMES, THEME_ORDER, THEME_NOTES, applyTheme, themeName } from './theme.js';
 
-const VERSION = '2026.09.27';
+const VERSION = '2026.09.28';
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
@@ -353,7 +353,7 @@ function stopRun() {
   S.track = null;
   S.free = null;
   S.resume = null;
-  if (S.mapReady) S.map.clearTrail();
+  if (S.mapReady) { S.map.clearTrail(); S.map.setGhost(null); }
   useCourse(S.marathon, S.readyPlan);
   $('#finish').hidden = true;
   $('#pocket').hidden = true;
@@ -617,7 +617,10 @@ function renderRunPanel(now, el, d, est, estimating) {
   else if (S.needWakeTap) status = 'Tap the screen once to keep it awake';
   const full = cls + (estimating ? ' est' : '');
   const P = S.lastPanel;
-  if (P.cls !== full) { bottom.className = full; P.cls = full; }
+  if (P.cls !== full) {
+    bottom.className = full; P.cls = full;
+    if (S.mapReady && S.settings.theme === 'signal') S.map.setLineColor(cls === 'behind' ? '#FF2D2D' : cls === 'ahead' ? '#00E676' : '#FFFFFF');
+  }
   let refit = false;
   if (P.word !== word) { $('#gap-word').textContent = word; P.word = word; refit = true; }
   if (P.num !== num || refit) {
@@ -680,7 +683,11 @@ function renderRunMap(now, el, d, est, dt) {
     if (f.pos) {
       if (f.trail.length - (S.lastTrailN || 0) > 3) { map.setTrail(f.trail, f.cum); S.lastTrailN = f.trail.length; }
       // the ghost runs your pace on your own trail: bright from the ghost to you
-      map.setTrailGhostAt(el > 0 ? (el / r.free.pace) * 1000 : -1);
+      const gd = el > 0 ? (el / r.free.pace) * 1000 : -1;
+      map.setTrailGhostAt(gd);
+      const gp = gd > 0 ? f.pointAt(gd) : null;
+      const gb = gp ? f.pointAt(Math.max(0, gd - 8)) : null;
+      map.setGhost(gp ? gp[0] : null, gp ? gp[1] : null, gp && gb ? bearingDeg(gb[0], gb[1], gp[0], gp[1]) : 0);
       const target = f.bearing ?? S.cam.bearing;
       S.cam.bearing = smoothAngle(S.cam.bearing, target, dt, 1.5);
       S.cam.zoom = smooth(S.cam.zoom, map.zoomForAhead(300), dt, 2);
@@ -690,8 +697,13 @@ function renderRunMap(now, el, d, est, dt) {
     return;
   }
   const course = S.course;
-  // the ghost is the front of the bright line
-  map.setGhostAt(el > 0 && S.plan ? Math.min(course.total, S.plan.distAt(el)) : course.line.d0);
+  // the ghost is the front of the bright line, with its white arrow on top
+  const gd = el > 0 && S.plan ? Math.min(course.total, S.plan.distAt(el)) : course.line.d0;
+  map.setGhostAt(gd);
+  if (el > 0 && gd < course.total) {
+    const [ga, go] = course.line.latLonAt(gd);
+    map.setGhost(ga, go, course.line.bearingAt(gd, 12, 4));
+  } else map.setGhost(null);
   if (d === null) {
     if (S.fix) {
       map.follow({ lat: S.fix.lat, lon: S.fix.lon, bearing: S.cam.bearing, zoom: 16, pitch: 40 });
@@ -1104,7 +1116,7 @@ function renderSettings() {
   $('#set-theme-note').textContent = THEME_NOTES[s.theme];
   $('#set-pocket').innerHTML = pocketButtons();
   $('#set-gun').textContent = fmtTimeOfDay(gunMs(), true);
-  $('#about').textContent = `Version ${VERSION}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles.`;
+  $('#about').textContent = `Version ${VERSION}${S.build ? ` · build ${S.build.slice(0, 7)}` : ''}. Map data © OpenStreetMap contributors, Overture Maps Foundation. Terrain: AWS Terrain Tiles. Voice: Piper (joe, CC0).`;
 }
 
 const VOICE_STEPS = [0, 250, 500, 1000, 2000];
@@ -1178,7 +1190,7 @@ function renderPlan() {
     const per = split / ((b - a) / 1000);
     const up = c.elevationAt(b) - c.elevationAt(a);
     const notes = [];
-    for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`💧${aid.km}`);
+    for (const aid of c.aid) if (aid.d > a && aid.d <= b) notes.push(`aid ${aid.km}${aid.what ? ` ${aid.what}` : ''}`);
     for (const km of S.settings.bars || []) if (km * 1000 > a && km * 1000 <= b) notes.push(`bar ${km.toFixed(1)}`);
     for (const [ta, tb] of c.tunnels) if (tb - ta > 300 && ta < b && tb > a) notes.push('tunnel');
     const cls = per > flat + 12 ? 'climb' : per < flat - 8 ? 'down' : '';
@@ -1401,6 +1413,15 @@ async function exportGpx(run) {
 // ---------------------------------------------------------------- service worker
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
+  // A new version activates as soon as it is downloaded. Reload onto it right away on the
+  // start screen; during a run, never (it is used from the next launch).
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return; // first visit: the worker just took over, same version
+    if (S.phase === 'running') { S.updateReady = true; renderChips(); return; }
+    toast('New version · reloading', 1500);
+    setTimeout(() => location.reload(), 600);
+  });
   navigator.serviceWorker.register('sw.js').then((reg) => {
     const check = () => {
       if (reg.waiting && navigator.serviceWorker.controller) { S.updateReady = true; renderChips(); }
@@ -1410,10 +1431,16 @@ function registerSW() {
       const w = reg.installing;
       if (w) w.addEventListener('statechange', check);
     });
-    setTimeout(() => reg.update().catch(() => {}), 4000);
+    const look = () => { if (S.phase !== 'running') reg.update().catch(() => {}); };
+    setTimeout(look, 3000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') look(); });
   }).catch(() => { S.offline = false; });
   navigator.serviceWorker.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'status') { S.offline = !!e.data.complete; renderChips(); }
+    if (e.data && e.data.type === 'status') {
+      S.offline = !!e.data.complete;
+      if (e.data.version) S.build = e.data.version;
+      renderChips();
+    }
   });
   navigator.serviceWorker.ready.then((reg) => {
     const ask = () => reg.active && reg.active.postMessage({ type: 'status' });

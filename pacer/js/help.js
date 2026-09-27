@@ -2,15 +2,15 @@
 export function helpHtml(version) {
   return `
 <h3>The number</h3>
-<p><b>+3</b> = 3 seconds behind the ghost (time you owe). <b>−3</b> = 3 seconds ahead (time in the bank). <b>0</b> = right on it.
-Same convention as race-timing gaps: plus is slower. From 100 s it switches to minutes: +1:40.</p>
+<p><b>+3</b> = 3 seconds ahead of the ghost: time in the bank you can lose. <b>−3</b> = 3 seconds behind. <b>0</b> = right on it.
+From 100 s it switches to minutes: −1:40.</p>
 <p>It is measured where you are: your time on the clock minus the ghost's time at the same spot on the course.</p>
 <p>A <b>~</b> and diagonal stripes mean no GPS (tunnel): the app is estimating from your pace over the last minute and resyncs a few seconds after the GPS returns.</p>
 <p>Bottom row: time since the start, official km, and the <b>ghost's pace for the stretch you are on</b> (the pace to hold right now). Top right: projected finish = target + gap, in the accent colour once it is over 3:00:00.</p>
 
 <h3>The ghost</h3>
-<p>The ghost is where the course line turns bright. Behind the ghost the course is a thin line; from the ghost on it is thick and bright, and that front glides forward at the ghost's pace.
-Bright line starting ahead of you: you are behind. You are already on the bright line: you are ahead (the front is behind you).</p>
+<p>The ghost is the <b>white arrow</b>; you are the <b>yellow arrow</b>. The course is bright from the ghost on and thin behind it, so the ghost eats the line as it runs.
+White arrow ahead of you: you are behind. White arrow behind you: you are ahead.</p>
 <p>The ghost runs the exact course at <b>even effort</b> and crosses the finish line exactly at your target (Settings). It slows up Côte Dinan and Rue des Remparts (km 11.4–13), gains on the descents towards the river, and runs about 4:10/km on the flat for 2:59:30.</p>
 <p>Effort model: Minetti's energy cost of running uphill; real-world data for descents (you cannot run a descent as fast as the treadmill formula says, and trying wrecks your quads); a little air drag. Optional race-morning wind (Settings) moves time between the exposed river stretch and the sheltered upper town, same finish.</p>
 
@@ -48,7 +48,7 @@ Bright line starting ahead of you: you are behind. You are already on the bright
 <p>Settings → Bars: the official km where you want to eat a bar (for example 8.1, 14.8, 24.4, 32.6). Each shows on the map as a green BAR label; the line under the number counts down the last 300 m (“Bar in 240 m”), and the voice says “Time for a bar” as you pass it. They are also in the Splits. The race hands out Krono gels at km 15.1 and 27, oranges at 37.4 and water everywhere, so a bar just before an aid station can be washed down.</p>
 
 <h3>Colours</h3>
-<p>Settings → Colours. <b>B&amp;W</b> (default): white on black, your arrow in orange, the most contrast in sunlight. <b>Amber</b> and <b>Ice</b>: everything in one colour. <b>Signal</b>: the number panel turns red when behind and green when ahead. Map extras in every theme: blue (or orange/white) dots are aid stations, round badges are the kilometres.</p>
+<p>Settings → Colours. <b>B&amp;W</b> (default): white on black with one yellow accent, your arrow; the most contrast in sunlight. <b>Amber</b> and <b>Ice</b>: everything in one colour. <b>Signal</b>: the number panel and the line ahead turn red when behind, green when ahead. On the map, in every theme: white drops are aid stations (with “gels”, “sponges” or “oranges” when they have them), round badges are the kilometres, BAR labels are your bars.</p>
 
 <h3>Practice this week</h3>
 <ol>

@@ -17,6 +17,10 @@ function runLookup(runs) {
   };
 }
 
+// What the marathon's aid stations hand out besides water and Krono electrolytes (runner's
+// guide 2026, p. 6). Every station has water; km 3.2 has nothing else.
+const AID_EXTRAS = { 3.2: 'water only', 15.1: 'gels', 24.7: 'sponges', 27: 'gels', 37.4: 'oranges' };
+
 export class Course {
   /**
    * spec: {
@@ -37,7 +41,9 @@ export class Course {
     this.tunnels = spec.tunnels || [];
     this.exposureAt = spec.exposure ? (() => { const f = runLookup(spec.exposure); return (d) => f(d) ?? 0.3; })() : () => 0.3;
     this.streetAt = spec.names ? (() => { const f = runLookup(spec.names); return (d) => f(d) || ''; })() : () => '';
-    this.aid = (spec.aid || []).map((a) => ({ ...a, d: a.km * 1000 }));
+    this.aid = (spec.aid || []).map((a) => ({
+      ...a, d: a.km * 1000, what: a.what ?? (this.id === 'marathon' ? AID_EXTRAS[a.km] || null : null),
+    }));
     this.gun = spec.gun ? Date.parse(spec.gun) : null;
     this._cells = null;
     this.lookahead = null;

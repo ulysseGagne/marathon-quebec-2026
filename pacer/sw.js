@@ -1,7 +1,7 @@
 // Service worker: everything the pacer needs is cached on first visit, so it works with
-// no connection at all. Updates wait until you tap "Update ready" on the start screen,
-// so nothing ever reloads during a run.
-const VERSION = '02028c13fcc9';
+// no connection at all. A new version takes over as soon as it is fully downloaded; the
+// page reloads onto it by itself unless a run is going (then on the next launch).
+const VERSION = 'fac18173635a';
 const CACHE = `pacer-${VERSION}`;
 const ASSETS = [
   "./",
@@ -300,8 +300,7 @@ async function complete() {
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     await precache();
-    // First install: take control right away. Updates wait for the user.
-    if (!self.registration.active) await self.skipWaiting();
+    await self.skipWaiting();
   })());
 });
 
