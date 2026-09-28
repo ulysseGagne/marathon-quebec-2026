@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Virtual Pacer" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>DKN → Sommet 3V</name><desc>The practice route, drawn by hand. Sommet 3V → DKN is the same line reversed.</desc></metadata>
+  <trk><name>DKN → Sommet 3V</name>
+    <trkseg>
+      <trkpt lat="46.780624" lon="-71.274512"/>
+      <trkpt lat="46.780532" lon="-71.274674"/>
+      <trkpt lat="46.780322" lon="-71.275052"/>
+      <trkpt lat="46.779879" lon="-71.275841"/>
+      <trkpt lat="46.779392" lon="-71.276711"/>
+      <trkpt lat="46.779362" lon="-71.276764"/>
+      <trkpt lat="46.779303" lon="-71.276869"/>
+      <trkpt lat="46.779133" lon="-71.276673"/>
+      <trkpt lat="46.779097" lon="-71.276721"/>
+      <trkpt lat="46.779064" lon="-71.276769"/>
+      <trkpt lat="46.779015" lon="-71.276712"/>
+      <trkpt lat="46.778177" lon="-71.275718"/>
+      <trkpt lat="46.777950" lon="-71.275447"/>
+      <trkpt lat="46.777060" lon="-71.277044"/>
+      <trkpt lat="46.776946" lon="-71.277210"/>
+      <trkpt lat="46.776700" lon="-71.277653"/>
+      <trkpt lat="46.776661" lon="-71.277609"/>
+      <trkpt lat="46.776641" lon="-71.277587"/>
+      <trkpt lat="46.776438" lon="-71.277691"/>
+      <trkpt lat="46.776284" lon="-71.277767"/>
+      <trkpt lat="46.776250" lon="-71.277782"/>
+      <trkpt lat="46.776207" lon="-71.277733"/>
+      <trkpt lat="46.776170" lon="-71.277689"/>
+      <trkpt lat="46.775983" lon="-71.278046"/>
+      <trkpt lat="46.775985" lon="-71.278096"/>
+      <trkpt lat="46.776112" lon="-71.278246"/>
+      <trkpt lat="46.775813" lon="-71.278810"/>
+      <trkpt lat="46.774913" lon="-71.280495"/>
+      <trkpt lat="46.774196" lon="-71.281897"/>
+      <trkpt lat="46.773635" lon="-71.283022"/>
+      <trkpt lat="46.773365" lon="-71.283757"/>
+      <trkpt lat="46.773125" lon="-71.284416"/>
+      <trkpt lat="46.773109" lon="-71.284461"/>
+      <trkpt lat="46.773218" lon="-71.284494"/>
+      <trkpt lat="46.773285" lon="-71.284481"/>
+      <trkpt lat="46.773388" lon="-71.284404"/>
+      <trkpt lat="46.773505" lon="-71.284361"/>
+      <trkpt lat="46.773596" lon="-71.284390"/>
+      <trkpt lat="46.773918" lon="-71.284758"/>
+      <trkpt lat="46.774235" lon="-71.285169"/>
+      <trkpt lat="46.774652" lon="-71.285657"/>
+      <trkpt lat="46.774861" lon="-71.285901"/>
+      <trkpt lat="46.774919" lon="-71.286011"/>
+      <trkpt lat="46.774937" lon="-71.286107"/>
+      <trkpt lat="46.774931" lon="-71.286201"/>
+      <trkpt lat="46.774907" lon="-71.286292"/>
+      <trkpt lat="46.774748" lon="-71.286608"/>
+      <trkpt lat="46.774482" lon="-71.287131"/>
+      <trkpt lat="46.774178" lon="-71.287781"/>
+      <trkpt lat="46.773240" lon="-71.290014"/>
+      <trkpt lat="46.773204" lon="-71.290132"/>
+      <trkpt lat="46.773196" lon="-71.290236"/>
+      <trkpt lat="46.773222" lon="-71.290346"/>
+      <trkpt lat="46.773354" lon="-71.290556"/>
+      <trkpt lat="46.773418" lon="-71.290683"/>
+      <trkpt lat="46.773434" lon="-71.290733"/>
+      <trkpt lat="46.773442" lon="-71.290820"/>
+      <trkpt lat="46.773420" lon="-71.290929"/>
+      <trkpt lat="46.773372" lon="-71.291033"/>
+      <trkpt lat="46.772980" lon="-71.291589"/>
+      <trkpt lat="46.772650" lon="-71.292099"/>
+      <trkpt lat="46.771829" lon="-71.293430"/>
+      <trkpt lat="46.771628" lon="-71.293771"/>
+      <trkpt lat="46.771134" lon="-71.294549"/>
+      <trkpt lat="46.772243" lon="-71.296106"/>
+      <trkpt lat="46.772479" lon="-71.296439"/>
+      <trkpt lat="46.772454" lon="-71.296588"/>
+      <trkpt lat="46.772256" lon="-71.296890"/>
+      <trkpt lat="46.772177" lon="-71.297067"/>
+      <trkpt lat="46.772062" lon="-71.297506"/>
+      <trkpt lat="46.772002" lon="-71.297809"/>
+      <trkpt lat="46.771865" lon="-71.298187"/>
+      <trkpt lat="46.771815" lon="-71.298412"/>
+      <trkpt lat="46.771837" lon="-71.298625"/>
+      <trkpt lat="46.771915" lon="-71.298852"/>
+      <trkpt lat="46.772168" lon="-71.299202"/>
+    </trkseg>
+  </trk>
+</gpx>

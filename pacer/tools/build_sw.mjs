@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const include = ['index.html', 'app.css', 'manifest.webmanifest', 'js', 'vendor', 'fonts', 'glyphs', 'icons',
-  'data/course.json', 'data/basemap.pmtiles', 'data/practice-graph.bin', 'data/practice-dem.bin', 'data/practice-places.json'];
+  'data/course.json', 'data/basemap.pmtiles', 'data/practice-route.gpx', 'data/practice-dem.bin', 'data/practice-places.json'];
 const skip = (p) => /(LICENSE|\.txt$|\.map$|\.md$)/.test(p);
 
 function walk(p, out) {

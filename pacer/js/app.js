@@ -6,7 +6,7 @@ import { Tracker } from './tracker.js';
 import { GapDisplay, fmtGap, spokenGap, offPaceCue, offPaceLevel, offPaceConfig } from './gap.js';
 import { fmtClock, fmtPace } from './model.js';
 import { MapView } from './mapview.js';
-import { Graph, Dem, practiceSpec, withStartLine, PRACTICE_ROUTES } from './practice.js';
+import { Dem, practiceSpec, withStartLine, PRACTICE_ROUTES, gpxTrack, practiceLine } from './practice.js';
 import { FreeRun } from './freerun.js';
 import { loadSettings, saveSettings, loadRun, saveRun, clearRun, TrackLog, toGpx, parseBars, fmtBars, SUGGESTED_BARS } from './store.js';
 import { Wake } from './wake.js';
@@ -51,7 +51,7 @@ const S = {
   freeMapIdleMs: 30000,  // ...until this long without a touch on it
   offNow: null,          // {r} while clearly off the course
   offline: null, updateReady: false,
-  graph: null, dem: null, places: null,
+  practiceTrack: null, dem: null, places: null, // practice: the drawn route, elevations, the two ends
   practiceDraft: null,
   sim: null,
   lastPanel: {},
@@ -2002,28 +2002,28 @@ function routeLabel(r, key = 'name') { return `${S.places[r.from][key]} → ${S.
 async function openPractice() {
   if (!S.gpsWanted) startGps();
   if (!S.practiceDraft) S.practiceDraft = { spec: null, needFix: false };
-  $('#pr-info').textContent = 'Loading the street map…';
+  $('#pr-info').textContent = 'Loading the route…';
   $('#pr-start').disabled = true;
   $('#pr-live').disabled = true;
   try {
-    if (!S.graph) {
-      const [g, d, places] = await Promise.all([
-        fetch('data/practice-graph.bin').then((r) => r.arrayBuffer()),
+    if (!S.practiceTrack) {
+      const [t, d, places] = await Promise.all([
+        fetch('data/practice-route.gpx').then((r) => r.text()),
         fetch('data/practice-dem.bin').then((r) => r.arrayBuffer()),
         fetch('data/practice-places.json').then((r) => r.json()),
       ]);
-      S.graph = new Graph(g);
       S.dem = new Dem(d);
       S.places = places;
+      S.practiceTrack = gpxTrack(t);
     }
   } catch (e) {
-    $('#pr-info').textContent = 'Could not load the practice map. Use Free run.';
+    $('#pr-info').textContent = 'Could not load the practice route. Use Free run.';
     return;
   }
   // standing at one end: that is where the run starts
   const fix = S.fix && Date.now() - S.fixReal < 60000 ? S.fix : null;
   if (fix) {
-    const near = PRACTICE_ROUTES.map((r) => ({ r, m: haversine(fix.lat, fix.lon, S.places[r.from].lat, S.places[r.from].lon) }))
+    const near = PRACTICE_ROUTES.map((r) => { const [la, lo] = practiceLine(r, S.practiceTrack)[0]; return { r, m: haversine(fix.lat, fix.lon, la, lo) }; })
       .sort((x, y) => x.m - y.m)[0];
     if (near.m < 1000 && near.r.id !== practiceRoute().id) { S.settings.practiceRoute = near.r.id; saveSettings(S.settings); }
   }
@@ -2032,23 +2032,13 @@ async function openPractice() {
 
 function buildPracticeRoute() {
   const dr = S.practiceDraft;
-  if (!dr || !S.graph) return;
+  if (!dr || !S.practiceTrack) return;
   const r = practiceRoute();
   $('#pr-route').innerHTML = PRACTICE_ROUTES.map((x) =>
     `<button type="button" data-route="${x.id}" class="${x.id === r.id ? 'on' : ''}">${escapeHtml(routeLabel(x, 'short'))}</button>`).join('');
   $('#pr-pace').textContent = `${fmtPace(S.settings.practicePace)} /km`;
-  const a = S.places[r.from], b = S.places[r.to];
   S.practiceSpecs = S.practiceSpecs || {};
-  let spec = S.practiceSpecs[r.id];
-  if (!spec) {
-    const route = S.graph.route(a.lat, a.lon, b.lat, b.lon);
-    if (!route) {
-      $('#pr-info').textContent = 'Could not find the route on the street map. Use Free run.';
-      dr.spec = null;
-      return;
-    }
-    spec = S.practiceSpecs[r.id] = practiceSpec(route, S.dem, { name: routeLabel(r) });
-  }
+  const spec = S.practiceSpecs[r.id] || (S.practiceSpecs[r.id] = practiceSpec(practiceLine(r, S.practiceTrack), S.dem, { name: routeLabel(r) }));
   dr.spec = spec;
   renderPracticeInfo();
   $('#pr-start').disabled = false;
@@ -2061,7 +2051,7 @@ function buildPracticeRoute() {
   S.overviewShown = true;
 }
 
-// "2.83 km one way · ghost 12:02 …", and how far you are from the start
+// "2.86 km one way · ghost 12:10 …", and how far you are from the start
 function renderPracticeInfo() {
   const dr = S.practiceDraft;
   if (!dr || !dr.spec) return;

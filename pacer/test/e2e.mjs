@@ -415,8 +415,8 @@ await p2.evaluate(() => {
   window.__status2 = new Set();
   const st = document.querySelector('#status-line');
   new MutationObserver(() => window.__status2.add(st.textContent)).observe(st, { childList: true, characterData: true, subtree: true });
-  // a wrong turn: 90 m off the route from 1.2 to 1.7 km
-  window.__pacer.startSim(30, { practiceSpec: S.practiceDraft.spec, seed: 7, detour: { from: 1200, to: 1700, off: 90 } });
+  // a wrong turn: 90 m off the route along boulevard Hochelaga (1.55 to 1.95 km from Sommet 3V)
+  window.__pacer.startSim(30, { practiceSpec: S.practiceDraft.spec, seed: 7, detour: { from: 1550, to: 1950, off: 90 } });
 });
 const waitV2 = async (el) => {
   for (let i = 0; i < 900; i++) {

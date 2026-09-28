@@ -28,7 +28,7 @@ connection at all.
 | **Run settings** | Start the clock at your detected start-line crossing, use gun time, nudge the start ±1/±5 s, set a new finish target from here, voice interval, colours, pocket mode, export GPX, end run. |
 | **Settings** | Target time, race-morning wind (by hand, or from the Open-Meteo forecast for 8:00–11:00, fetched once; on race morning the start screen offers it on a chip), seconds lost per aid station and what each station has, voice mode and music behaviour, fuel plan, colours, pocket mode, gun time (if the start is delayed), a 20× simulated race (a different runner every time). |
 | **Splits** | Every kilometre of the even-effort plan with clock and time of day. |
-| **Practice** | Two routes on real streets, one way each: **Sommet → DKN** (Sommet 3V, 937 avenue Roland-Beaudin, to Pavillon Charles-De Koninck, Université Laval) and **DKN → Sommet**, 2.83 km, at the ghost pace you choose, with even effort on the hills. Standing at one end picks the route that starts there. **Free run** works anywhere without a route. |
+| **Practice** | Two routes, one way each: **Sommet → DKN** (Sommet 3V, 937 avenue Roland-Beaudin, to Pavillon Charles-De Koninck, Université Laval) and **DKN → Sommet**, 2.86 km, the same line both ways, drawn by hand (`data/practice-route.gpx`, DKN to Sommet 3V; `tools/practice_route.mjs` turns any GPX of the run into it), at the ghost pace you choose, with even effort on the hills. Standing at one end picks the route that starts there. **Free run** works anywhere without a route. |
 
 The in-app **Help** has the full race-day checklist (Home Screen, Precise Location, Auto-Lock
 Never, Guided Access, Do Not Disturb, keeping the old battery warm).
@@ -91,8 +91,9 @@ pacer/
   js/        app.js (UI), course.js, geo.js, model.js, tracker.js, gap.js, practice.js,
              turns.js, freerun.js, mapview.js, theme.js, store.js, voice.js, wake.js, sim.js,
              help.js
-  data/      course.json, marathon-2026.gpx, basemap.pmtiles, practice-graph.bin,
-             practice-dem.bin, practice-places.json
+  data/      course.json, marathon-2026.gpx, basemap.pmtiles, practice-route.gpx,
+             practice-dem.bin, practice-places.json (practice-graph.bin: the street graph
+             the tests route on; the app no longer loads it)
   vendor/    maplibre-gl 5.24.0, pmtiles 4.5.0, NoSleep.js 0.12.0
   glyphs/, fonts/ (Barlow Condensed, OFL), icons/
   tools/     data pipeline (Python) and build_sw.mjs

@@ -1,7 +1,7 @@
 // Service worker: everything the pacer needs is cached on first visit, so it works with
 // no connection at all. A new version takes over as soon as it is fully downloaded; the
 // page reloads onto it by itself unless a run is going (then on the next launch).
-const VERSION = '362800627a97';
+const VERSION = '04fb96cc3a76';
 const CACHE = `pacer-${VERSION}`;
 const ASSETS = [
   "./",
@@ -43,7 +43,7 @@ const ASSETS = [
   "icons/og.png",
   "data/course.json",
   "data/basemap.pmtiles",
-  "data/practice-graph.bin",
+  "data/practice-route.gpx",
   "data/practice-dem.bin",
   "data/practice-places.json"
 ];

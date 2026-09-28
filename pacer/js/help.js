@@ -91,7 +91,7 @@ White arrow ahead of you: you are behind. White arrow behind you: you are ahead.
 
 <h3>Practice this week</h3>
 <ol>
-<li><b>Practice</b> has two routes, one way each: <b>Sommet → DKN</b> (Sommet 3V, 937 avenue Roland-Beaudin, to Pavillon Charles-De Koninck) and <b>DKN → Sommet</b>, 2.8 km on the streets. Standing at one end picks the route that starts there; it says so if you are far from the start. Choose the ghost's average pace.</li>
+<li><b>Practice</b> has two routes, one way each: <b>Sommet → DKN</b> (Sommet 3V, 937 avenue Roland-Beaudin, to Pavillon Charles-De Koninck) and <b>DKN → Sommet</b>, 2.86 km, the same line both ways, drawn by hand: avenue de la Médecine, rue de l'Agriculture, the Hochelaga bike crossing over the autoroute, boulevard Hochelaga, rues Fiedmont, de la Picardie and Montreuil, route de l'Église, avenue Roland-Beaudin. Standing at one end picks the route that starts there; it says so if you are far from the start. Choose the ghost's average pace.</li>
 <li>Same screen and same ghost logic as race day, including even effort on the hills.</li>
 <li><b>Free run</b> works anywhere without a route (distance from GPS, so it drifts like a normal app — it is only for trying the display).</li>
 </ol>

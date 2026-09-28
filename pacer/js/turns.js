@@ -8,6 +8,8 @@ const SIMPLIFY = 7;   // m: the line is simplified this much first, so a road th
 const MIN_TURN = 30;  // deg: corners gentler than this are the road bending, not a turn
 const MERGE = 25;     // m: two corners the same way this close are one turn (a U-turn
                       // around an island, a corner drawn as two)
+const JOG = 12;       // m: two corners this close, whichever way, are one: a sidestep
+                      // (right then left 11 m apart) cancels out and says nothing
 const CHAIN = 60;     // m: a turn this close after the one before is said with it ("then left")
 export const CALL_AT = 50; // m before the turn
 
@@ -55,11 +57,12 @@ export function findTurns(line, { from = 0, min = 35 } = {}) {
     const angle = angleDiff(bearing(line, a, b), bearing(line, b, c));
     if (Math.abs(angle) >= MIN_TURN) raw.push({ d: line.d[b], angle });
   }
-  // corners the same way close together are one turn
+  // corners close together are one turn: the same way within MERGE, any way within JOG
   const turns = [];
   for (const t of raw) {
     const p = turns[turns.length - 1];
-    if (p && Math.sign(p.angle) === Math.sign(t.angle) && t.d - p.d <= MERGE) {
+    const gap = p ? t.d - p.d : Infinity;
+    if (p && (gap <= JOG || (Math.sign(p.angle) === Math.sign(t.angle) && gap <= MERGE))) {
       p.d = (p.d + t.d) / 2;
       p.angle = Math.max(-180, Math.min(180, p.angle + t.angle));
     } else turns.push({ ...t });

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { Course } from '../js/course.js';
 import { findTurns, turnCall, TurnCaller, CALL_AT } from '../js/turns.js';
 import { lineFromLatLon, makeProjection, CourseLine } from '../js/geo.js';
-import { Graph, Dem, practiceSpec, PRACTICE_ROUTES } from '../js/practice.js';
+import { Dem, practiceSpec, PRACTICE_ROUTES, gpxTrack, practiceLine } from '../js/practice.js';
 
 // A course drawn in metres east/north of a point, as a CourseLine
 function drawn(pts) {
@@ -64,18 +64,20 @@ test('directions on the marathon: the real turns only, both U-turns, each said o
   console.log(`   marathon: ${turns.length} turns in ${all.length} calls, e.g. ${all.slice(0, 3).map((x) => `km ${(x.d / 1000).toFixed(2)} “${x.text}”`).join(' ')}`);
 });
 
-test('directions on the practice routes: every corner', () => {
+test('directions on the practice routes: every corner, no sidestep said as a turn', () => {
   const buf = (p) => { const b = readFileSync(new URL(p, import.meta.url)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
-  const graph = new Graph(buf('../data/practice-graph.bin'));
   const dem = new Dem(buf('../data/practice-dem.bin'));
-  const P = JSON.parse(readFileSync(new URL('../data/practice-places.json', import.meta.url)));
+  const track = gpxTrack(readFileSync(new URL('../data/practice-route.gpx', import.meta.url), 'utf8'));
   for (const r of PRACTICE_ROUTES) {
-    const spec = practiceSpec(graph.route(P[r.from].lat, P[r.from].lon, P[r.to].lat, P[r.to].lon), dem, { name: r.id });
-    const c = new Course(spec);
+    const c = new Course(practiceSpec(practiceLine(r, track), dem, { name: r.id }));
     const turns = findTurns(c.line, { from: c.line.d0 + 5, min: 35 });
     const all = calls(turns, c.total);
-    assert.ok(turns.length >= 10, `${r.id}: ${turns.length} turns`);
+    assert.ok(turns.length >= 8 && all.length >= 8, `${r.id}: ${turns.length} turns`);
     assert.ok(all.every((x) => /^(Turn|Bear|U-turn)/.test(x.text)));
-    console.log(`   ${r.id}: ${turns.length} turns in ${all.length} calls`);
+    console.log(`   ${r.id}: ${turns.length} turns in ${all.length} calls: ${all.map((x) => x.text.replace(' in 50 meters', '')).join(' | ')}`);
   }
+  // DKN -> Sommet: onto avenue de la Médecine is one left turn (the path's 11 m jog there says nothing)
+  const c = new Course(practiceSpec(practiceLine(PRACTICE_ROUTES[1], track), dem));
+  const first = calls(findTurns(c.line, { from: c.line.d0 + 5, min: 35 }), c.total)[0];
+  assert.equal(first.text, 'Turn left in 50 meters.');
 });

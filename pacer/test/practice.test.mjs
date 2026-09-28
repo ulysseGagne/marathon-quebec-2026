@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { Graph, Dem, practiceSpec, PRACTICE_ROUTES } from '../js/practice.js';
+import { Graph, Dem, practiceSpec, PRACTICE_ROUTES, gpxTrack, practiceLine } from '../js/practice.js';
 import { Course } from '../js/course.js';
 import { Tracker } from '../js/tracker.js';
 import { simulate } from '../js/sim.js';
@@ -42,26 +42,24 @@ test('DEM gives plausible heights', () => {
   assert.ok(expo < 20, `start ${expo}`);
 });
 
-test('the two practice routes: Sommet 3V to DKN and back, one way, on streets', () => {
-  const lens = {};
+const TRACK = gpxTrack(readFileSync(new URL('../data/practice-route.gpx', import.meta.url), 'utf8'));
+
+test('the two practice routes: the line drawn by hand, DKN to Sommet 3V and reversed', () => {
+  const lines = Object.fromEntries(PRACTICE_ROUTES.map((r) => [r.id, practiceLine(r, TRACK)]));
+  assert.deepEqual(lines['home-dkn'], lines['dkn-home'].slice().reverse());
   for (const r of PRACTICE_ROUTES) {
-    const a = PLACES[r.from], b = PLACES[r.to];
-    const pts = graph.route(a.lat, a.lon, b.lat, b.lon);
-    assert.ok(pts, r.id);
+    const pts = lines[r.id], a = PLACES[r.from], b = PLACES[r.to];
     const spec = practiceSpec(pts, dem, { name: r.id });
-    lens[r.id] = spec.distance;
-    // starts and ends at the two buildings (the street in front of them)
-    assert.ok(haversine(pts[0][0], pts[0][1], a.lat, a.lon) < 40, `${r.id} start`);
-    assert.ok(haversine(pts[pts.length - 1][0], pts[pts.length - 1][1], b.lat, b.lon) < 40, `${r.id} end`);
-    console.log(`   ${PLACES[r.from].name} -> ${PLACES[r.to].name}: ${(spec.distance / 1000).toFixed(2)} km`);
+    // from the door of Sommet 3V, to the corner by DKN where the run starts or ends
+    assert.ok(haversine(pts[0][0], pts[0][1], a.lat, a.lon) < 100, `${r.id} start`);
+    assert.ok(haversine(pts[pts.length - 1][0], pts[pts.length - 1][1], b.lat, b.lon) < 100, `${r.id} end`);
+    assert.ok(spec.distance > 2800 && spec.distance < 2950, `${r.id}: ${spec.distance} m`);
+    console.log(`   ${a.name} -> ${b.name}: ${(spec.distance / 1000).toFixed(2)} km, ${pts.length} points`);
   }
-  assert.ok(lens['home-dkn'] > 2500 && lens['home-dkn'] < 3500);
-  assert.ok(Math.abs(lens['home-dkn'] - lens['dkn-home']) < 100);
 });
 
 test('a practice run from Sommet 3V to DKN tracks within 30 m', () => {
-  const r = graph.route(PLACES.home.lat, PLACES.home.lon, DKN.lat, DKN.lon);
-  const spec = practiceSpec(r, dem);
+  const spec = practiceSpec(practiceLine(PRACTICE_ROUTES[0], TRACK), dem);
   const course = new Course(spec);
   const plan = course.plan({ target: (course.total / 1000) * 270 });
   const start = Date.UTC(2026, 8, 29, 22, 0, 0);

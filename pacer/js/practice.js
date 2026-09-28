@@ -1,7 +1,8 @@
 // Practice mode: two fixed one-way routes, Sommet 3V (home) to Pavillon Charles-De Koninck
-// (DKN) and back the other way, found on a bundled street graph of Québec City, fully
-// offline. The route becomes a course like the marathon: same tracker, same ghost, same
-// even-effort pacing.
+// (DKN) and back the other way, along a line drawn by hand (data/practice-route.gpx),
+// fully offline. The route becomes a course like the marathon: same tracker, same ghost,
+// same even-effort pacing. (Graph: routing on a street graph of Québec City, used by the
+// tests and kept for other routes.)
 import { haversine, lineFromLatLon } from './geo.js';
 import { gaussianSmooth } from './model.js';
 
@@ -270,11 +271,24 @@ export class Dem {
   }
 }
 
-// The practice routes, one way each: [from, to] in data/practice-places.json
+// The practice routes, one way each: [from, to] in data/practice-places.json. Both follow
+// the line drawn by hand in data/practice-route.gpx (DKN to Sommet 3V); Sommet 3V to DKN
+// is the same line reversed.
 export const PRACTICE_ROUTES = [
-  { id: 'home-dkn', from: 'home', to: 'dkn' },
-  { id: 'dkn-home', from: 'dkn', to: 'home' },
+  { id: 'home-dkn', from: 'home', to: 'dkn', reverse: true },
+  { id: 'dkn-home', from: 'dkn', to: 'home', reverse: false },
 ];
+
+// The track points of a GPX file: [[lat, lon], ...]
+export function gpxTrack(text) {
+  const trk = text.slice(Math.max(0, text.indexOf('<trk')));
+  return [...trk.matchAll(/<trkpt\s+lat="([-\d.]+)"\s+lon="([-\d.]+)"/g)].map((m) => [+m[1], +m[2]]);
+}
+
+// A practice route's line from the drawn track
+export function practiceLine(route, track) {
+  return route.reverse ? track.slice().reverse() : track.slice();
+}
 
 // Course spec (same shape as data/course.json) from a route polyline.
 export function practiceSpec(latlon, dem, { name = 'Practice' } = {}) {
