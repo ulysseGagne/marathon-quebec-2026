@@ -2,15 +2,78 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Où seront Ulysse et Indiana?</title>
-<meta name="description" content="Marathon de Québec, dimanche 4 octobre 2026 : où Ulysse et Indiana seront à chaque heure, selon leur plan de course.">
-<link rel="canonical" href="https://ulyssegagne.github.io/marathon-quebec-2026/map/">
-<meta http-equiv="refresh" content="0; url=map/">
-<script>location.replace('map/' + location.search + location.hash);</script>
+<title>Marathon de Québec 2026</title>
+<meta name="description" content="Marathon de Québec, dimanche 4 octobre 2026 : la carte d'Ulysse et Indiana, et le Virtual Pacer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap">
+<style>
+:root {
+  --ink: #1f1a2c;
+  --muted: #5c566c;
+  --paper: #ffffff;
+  --ground: #ecebe7;
+  --u: #5b2d97;
+  --font: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ground);
+  color: var(--ink);
+  font: 17px/1.4 var(--font);
+  -webkit-text-size-adjust: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+main { width: 100%; max-width: 440px; display: grid; gap: 12px; }
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; }
+a.card {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  background: var(--paper);
+  border-radius: 16px;
+  border-left: 6px solid var(--accent);
+  box-shadow: 0 1px 2px rgb(31 26 44 / 0.12), 0 8px 28px rgb(31 26 44 / 0.10);
+  color: inherit;
+  text-decoration: none;
+}
+a.card:hover { box-shadow: 0 1px 2px rgb(31 26 44 / 0.12), 0 10px 32px rgb(31 26 44 / 0.18); }
+a.card:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.card strong { font-size: 20px; }
+.card strong::after { content: " →"; color: var(--accent); }
+.card span { color: var(--muted); }
+.map { --accent: var(--u); }
+.pacer { --accent: #000000; }
+</style>
 </head>
 <body>
-<p>La carte a déménagé : <a href="map/">ulyssegagne.github.io/marathon-quebec-2026/map/</a></p>
+<main>
+  <p class="eyebrow">Dimanche 4 octobre 2026</p>
+  <h1>Marathon Beneva de Québec</h1>
+  <a class="card map" href="map/">
+    <strong>Où seront Ulysse et Indiana?</strong>
+    <span>La carte du parcours : à quelle heure ils passent, selon leur plan de course.</span>
+  </a>
+  <a class="card pacer" href="pacer/">
+    <strong>Virtual Pacer</strong>
+    <span>L'app de course d'Ulysse : l'avance ou le retard sur le plan, à l'écran et à voix haute. Fonctionne hors ligne.</span>
+  </a>
+</main>
 </body>
 </html>
