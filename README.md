@@ -20,3 +20,4 @@ Both are served by GitHub Pages from `main` (root folder); every push to `main` 
 - [`Marathon Québec 2026.md`](<Marathon Québec 2026.md>): race-day plan (bib pickup, timing, corrals, logistics).
 - [`42km.gpx`](42km.gpx), [`21km.gpx`](21km.gpx): the two courses.
 - [`guide-coureur.pdf`](guide-coureur.pdf): the official runner's guide.
+- [`wallpapers/`](wallpapers): race-plan phone wallpapers (and square versions) for Ulysse and Indiana.

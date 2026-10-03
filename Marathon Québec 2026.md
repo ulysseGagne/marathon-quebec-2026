@@ -5,7 +5,7 @@ Sunday, October 4, 2026 · start on Rue de l'Exposition near Place Jean-Bélivea
 | Runner | Race | Corral | Wave start | Goal |
 |---|---|---|---|---|
 | Ulysse | 42,2 km Beneva (AWS) | 1 · Rose (under 3:15) | 8:00 | sub-3 · plan 2:59:50 |
-| Indiana | 21,1 km Shop Santé (WKND 91,9) | 4 · Vert (2:00–2:09) | 10:05 | plan 2:09:50 |
+| Indiana | 21,1 km Shop Santé (WKND 91,9) | 4 · Vert (2:00–2:09) | 10:05 | 2:00 · plan 1:59:58 |
 
 ## Before race day
 
@@ -23,10 +23,10 @@ Sunday, October 4, 2026 · start on Rue de l'Exposition near Place Jean-Bélivea
 | Be at the start area | 7:00 | 9:05 |
 | Enter the corral | 7:40 | 9:45 |
 | Start | 8:00 exactly | a few minutes after 10:05 (starts at the back of the corral) |
-| Planned finish | about 11:00 | about 12:15–12:20 |
+| Planned finish | about 11:00 | about 12:10 |
 | Time limit | 6 h | 4 h |
 
-Ulysse finishes about 1 h 15 before Indiana, at the same place, so Ulysse can be at the finish line when Indiana arrives.
+Ulysse finishes about 1 h 10 before Indiana, at the same place, so Ulysse can be at the finish line when Indiana arrives.
 
 - **Bag check:** only the runner's bag from the Expo is accepted, tagged with the tear-off strip at the bottom of the bib. Pick it up at the finish.
 - **Clothes dropped at the start** are not returned; they go to charity.
@@ -38,7 +38,7 @@ Ulysse finishes about 1 h 15 before Indiana, at the same place, so Ulysse can be
 
 - Ulysse would like his mother to come see him on the Promenade Samuel-De Champlain, between Station de la Plage and Station de la Voile. The two are about 800 m apart, and each has an àVélo station.
 - On the 2:59:50 plan, Ulysse passes Station de la Plage (km 29,4) around 10:06 and Station de la Voile (km 30,2) around 10:09.
-- The half-marathon doesn't reach that stretch. Its closest point is boulevard Champlain at the foot of Côte Gilmour, about 850 m east of Station de la Voile. Indiana should pass there around 11:12 (km 10,3) if she crosses the start line around 10:08.
+- The half-marathon doesn't reach that stretch. Its closest point is boulevard Champlain at the foot of Côte Gilmour, about 850 m east of Station de la Voile. Indiana should pass there around 11:08 (km 10,3) if she crosses the start line around 10:08.
 - Supporters are not allowed on the course, on foot, by bike or on inline skates.
 
 ## Ulysse: marathon plan (2:59:50)
@@ -108,36 +108,19 @@ Ulysse finishes about 1 h 15 before Indiana, at the same place, so Ulysse can be
 | 42 | 4:15 | 2:59:00 | 10:59 | -1 s |  |
 | 42,2 | 4:15 | 2:59:50 | 10:59 | 0 s |  |
 
-## Indiana: half-marathon plan (2:09:50)
+## Indiana: half-marathon plan (2:00:00)
 
-Even effort, same method as the marathon: a 6:05/km flat-equivalent pace, 6:09/km average, about 163 m of climbing. The only real climb is km 4–8 (Vieux-Québec, then the Plains of Abraham). The course then drops about 70 m down Côte Gilmour in km 10 and stays flat to the finish.
+| Pace | Until | Clock |
+|---|---|---|
+| 5:35 | km 3 | 0:16:45 |
+| 6:15 | km 8 (hill) | 0:48:00 |
+| 5:00 | km 10 (Côte Gilmour) | 0:58:00 |
+| 5:35 | km 21 | 1:59:25 |
+| | finish 21,1 | 1:59:58 |
 
-| km | Elev. | Pace | Clock | Aid (km) |
-|---|---|---|---|---|
-| 1 | -3 m | 5:59 | 0:05:59 |  |
-| 2 | +2 m | 6:10 | 0:12:08 |  |
-| 3 | -2 m | 6:02 | 0:18:10 |  |
-| 4 | +12 m | 6:31 | 0:24:41 | 3,6 |
-| 5 | +35 m | 7:29 | 0:32:10 |  |
-| 6 | +28 m | 7:08 | 0:39:17 | 5,1 |
-| 7 | -11 m | 5:47 | 0:45:04 |  |
-| 8 | +23 m | 6:55 | 0:51:59 | 7,6 |
-| 9 | -7 m | 5:51 | 0:57:51 |  |
-| 10 | -70 m | 4:26 | 1:02:17 |  |
-| 11 | -8 m | 5:52 | 1:08:09 |  |
-| 12 | -1 m | 6:03 | 1:14:12 | 12 |
-| 13 | +4 m | 6:13 | 1:20:25 |  |
-| 14 | -6 m | 5:55 | 1:26:19 |  |
-| 15 | +1 m | 6:09 | 1:32:28 |  |
-| 16 | +0 m | 6:06 | 1:38:34 | 15,3 |
-| 17 | -0 m | 6:04 | 1:44:39 | 16,5 |
-| 18 | +5 m | 6:15 | 1:50:53 |  |
-| 19 | -4 m | 5:58 | 1:56:51 |  |
-| 20 | +5 m | 6:16 | 2:03:07 | 19,6 |
-| 21 | +1 m | 6:07 | 2:09:14 |  |
-| 21,1 | +0 m | 6:06 | 2:09:50 |  |
+**Rule:** 6:15 is the average over the climb (Vieux-Québec, then the Plains of Abraham). Slower going up in km 5–6 is fine; aim to pass km 8 near 0:48:00.
 
-**The km 10 split (4:26) is too fast to be realistic.** The even-effort model overstates the gain on a steep descent, and Côte Gilmour winds down at about 7%. Plan for about 5:05 there instead, which loses about 39 s. To keep 2:09:50, make it up by running every km from 11 to 21 about 4 s faster than the table.
+The round paces stay within 10 s of an even-effort 2:00:00 run (same method as the marathon) at every checkpoint.
 
 ## Method
 
@@ -151,7 +134,7 @@ Even effort, same method as the marathon: a 6:05/km flat-equivalent pace, 6:09/k
 - `21km.gpx`: half-marathon course, not official, 21,12 km from the start line to the finish line, with elevation. Every point is within 25 m of the official route.
 - `guide-coureur.pdf`: official runner's guide.
 - `index.html`: map for supporters, in French, online at https://ulyssegagne.github.io/marathon-quebec-2026/. A time slider shows where Ulysse and Indiana should be according to their plans, with toggles for àVélo stations and km markers.
-- `wallpapers/`: race-plan wallpaper for the phone (1080×2340) and a square version.
+- `wallpapers/`: race-plan wallpapers, black with white monospace figures, one row per pace: pace, km it holds until, clock at that km (hours dropped). Phone (`*-phone`) and square (`*-square`) versions for Ulysse and Indiana.
 - `pacer/`: Ulysse's virtual pacer, online at https://ulyssegagne.github.io/marathon-quebec-2026/pacer/. One big number: seconds ahead (+) or behind (−) of an even-effort 2:59:30 run, measured at the runner's exact spot on the course, offline, with practice runs (Sommet 3V → DKN and back, one way), voice, off-course warnings and a pocket mode. The voice also calls each bar 1 km before an aid station and every aid station 200 m before it; the fuel plan is a CAF bar at ~7:20, REG at km 4.8 and 10.1, race gels at 15.1 and 27, CAF at 21.9 and 31.9. See `pacer/README.md`. `pacer/data/marathon-2026.gpx` is the rebuilt course (street centrelines, official start and finish lines, both passes through Tunnel Joseph-Samson).
 
 Sources: [race page](https://www.jecoursqc.com/en/beneva-quebec-city-marathon-presented-by-montellier/races/), [42,2 km map](https://www.jecoursqc.com/wp-content/uploads/2026/09/MDQ_parcours-42-2km.pdf), [21,1 km map](https://www.jecoursqc.com/wp-content/uploads/2026/09/MDQ_parcours-21-1km.pdf), [marathon GPX](https://www.calculitineraires.fr/?id=1323345).
